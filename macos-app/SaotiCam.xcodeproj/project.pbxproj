@@ -1,0 +1,356 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		104F9BF05898B0C9E2A281F1 /* DeviceHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA16F124AA2ADF0180E69AE /* DeviceHub.swift */; };
+		16A46CC2D54DDA0929F2C213 /* ModuleDetailViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7FC5FBFD33C48ECF7C761C0 /* ModuleDetailViews.swift */; };
+		1873E69C9C44A21AF32DA60F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3C11530463A84A3AF2BE31A /* ContentView.swift */; };
+		22EDDABD3B985A7166257477 /* MjpegStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14BDDE8EFB556E6B72A53518 /* MjpegStreamClient.swift */; };
+		33C26352FFFC0AE64490CBAA /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = D732D5134ABDC16EA157A1F5 /* DesignSystem.swift */; };
+		38B30248004FE7FF5F5A6C4B /* StreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E252B157C540937E243BEE6E /* StreamClient.swift */; };
+		3EF3448DF628DA47F9042417 /* FrameDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185AF8B60276556CB7D7B9F7 /* FrameDisplayView.swift */; };
+		44B018E2994D522474B41BFC /* SaotiCamApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1D57DB5679F21CFA2068F11 /* SaotiCamApp.swift */; };
+		4E93A67A4469A9920E000279 /* SerialStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B802B7E05B537E0A4E2A4E1F /* SerialStreamClient.swift */; };
+		6D84EFC71209D966901F5B66 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7676F48EF810A9CC673EAC3B /* DashboardView.swift */; };
+		8770A00CB40F403645673A80 /* PlatformImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19D0F281F7C95D9F142D004 /* PlatformImage.swift */; };
+		AD63D3968CDC75718FDB05BB /* CameraStreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97D20DBD75F33F8C892917A4 /* CameraStreamView.swift */; };
+		B6B9E9BD19B405EDDB93E2F4 /* CellularConfigView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565191EEC081066ED8D9A1F8 /* CellularConfigView.swift */; };
+		D50CABD87EFD44043878576D /* DeviceStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F3682C7651C922F3EAFE60B /* DeviceStatus.swift */; };
+		E6CCB2C43178CA4FE587621F /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE04B7C75E86F6E9A1B286C9 /* RootView.swift */; };
+		EC074831FDABFCA21F83019F /* NativeImageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A7454737A7EEA362AE8B414 /* NativeImageView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		14BDDE8EFB556E6B72A53518 /* MjpegStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MjpegStreamClient.swift; sourceTree = "<group>"; };
+		185AF8B60276556CB7D7B9F7 /* FrameDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameDisplayView.swift; sourceTree = "<group>"; };
+		3F3682C7651C922F3EAFE60B /* DeviceStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceStatus.swift; sourceTree = "<group>"; };
+		45B3EA855DA739268C26C0DB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		565191EEC081066ED8D9A1F8 /* CellularConfigView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CellularConfigView.swift; sourceTree = "<group>"; };
+		5A7454737A7EEA362AE8B414 /* NativeImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeImageView.swift; sourceTree = "<group>"; };
+		65482F656B2FDAACFE56C230 /* SaotiCam.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SaotiCam.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7676F48EF810A9CC673EAC3B /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		7FA16F124AA2ADF0180E69AE /* DeviceHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceHub.swift; sourceTree = "<group>"; };
+		97D20DBD75F33F8C892917A4 /* CameraStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraStreamView.swift; sourceTree = "<group>"; };
+		B802B7E05B537E0A4E2A4E1F /* SerialStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SerialStreamClient.swift; sourceTree = "<group>"; };
+		C7FC5FBFD33C48ECF7C761C0 /* ModuleDetailViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModuleDetailViews.swift; sourceTree = "<group>"; };
+		CE04B7C75E86F6E9A1B286C9 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		D1D57DB5679F21CFA2068F11 /* SaotiCamApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaotiCamApp.swift; sourceTree = "<group>"; };
+		D732D5134ABDC16EA157A1F5 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		E252B157C540937E243BEE6E /* StreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamClient.swift; sourceTree = "<group>"; };
+		F19D0F281F7C95D9F142D004 /* PlatformImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformImage.swift; sourceTree = "<group>"; };
+		F3C11530463A84A3AF2BE31A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		16CF033785503B2BE1D7589D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				65482F656B2FDAACFE56C230 /* SaotiCam.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AFD2B14C233605AE2F6E6B3C /* SaotiCam */ = {
+			isa = PBXGroup;
+			children = (
+				97D20DBD75F33F8C892917A4 /* CameraStreamView.swift */,
+				565191EEC081066ED8D9A1F8 /* CellularConfigView.swift */,
+				F3C11530463A84A3AF2BE31A /* ContentView.swift */,
+				7676F48EF810A9CC673EAC3B /* DashboardView.swift */,
+				D732D5134ABDC16EA157A1F5 /* DesignSystem.swift */,
+				7FA16F124AA2ADF0180E69AE /* DeviceHub.swift */,
+				3F3682C7651C922F3EAFE60B /* DeviceStatus.swift */,
+				185AF8B60276556CB7D7B9F7 /* FrameDisplayView.swift */,
+				45B3EA855DA739268C26C0DB /* Info.plist */,
+				14BDDE8EFB556E6B72A53518 /* MjpegStreamClient.swift */,
+				C7FC5FBFD33C48ECF7C761C0 /* ModuleDetailViews.swift */,
+				5A7454737A7EEA362AE8B414 /* NativeImageView.swift */,
+				F19D0F281F7C95D9F142D004 /* PlatformImage.swift */,
+				CE04B7C75E86F6E9A1B286C9 /* RootView.swift */,
+				D1D57DB5679F21CFA2068F11 /* SaotiCamApp.swift */,
+				B802B7E05B537E0A4E2A4E1F /* SerialStreamClient.swift */,
+				E252B157C540937E243BEE6E /* StreamClient.swift */,
+			);
+			path = SaotiCam;
+			sourceTree = "<group>";
+		};
+		B7D4B21419B83593525B3199 = {
+			isa = PBXGroup;
+			children = (
+				AFD2B14C233605AE2F6E6B3C /* SaotiCam */,
+				16CF033785503B2BE1D7589D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		99045659AFB2286F18E17D0F /* SaotiCam */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 540E13466FD10E9FC5A7769B /* Build configuration list for PBXNativeTarget "SaotiCam" */;
+			buildPhases = (
+				F83554EE8A94141C8D5CD8B1 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SaotiCam;
+			packageProductDependencies = (
+			);
+			productName = SaotiCam;
+			productReference = 65482F656B2FDAACFE56C230 /* SaotiCam.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E2B44BB64EF9C4550D4C0DDE /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					99045659AFB2286F18E17D0F = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 1AB6C48191F54702EBBA6E38 /* Build configuration list for PBXProject "SaotiCam" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = B7D4B21419B83593525B3199;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 16CF033785503B2BE1D7589D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				99045659AFB2286F18E17D0F /* SaotiCam */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F83554EE8A94141C8D5CD8B1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AD63D3968CDC75718FDB05BB /* CameraStreamView.swift in Sources */,
+				B6B9E9BD19B405EDDB93E2F4 /* CellularConfigView.swift in Sources */,
+				1873E69C9C44A21AF32DA60F /* ContentView.swift in Sources */,
+				6D84EFC71209D966901F5B66 /* DashboardView.swift in Sources */,
+				33C26352FFFC0AE64490CBAA /* DesignSystem.swift in Sources */,
+				104F9BF05898B0C9E2A281F1 /* DeviceHub.swift in Sources */,
+				D50CABD87EFD44043878576D /* DeviceStatus.swift in Sources */,
+				3EF3448DF628DA47F9042417 /* FrameDisplayView.swift in Sources */,
+				22EDDABD3B985A7166257477 /* MjpegStreamClient.swift in Sources */,
+				16A46CC2D54DDA0929F2C213 /* ModuleDetailViews.swift in Sources */,
+				EC074831FDABFCA21F83019F /* NativeImageView.swift in Sources */,
+				8770A00CB40F403645673A80 /* PlatformImage.swift in Sources */,
+				E6CCB2C43178CA4FE587621F /* RootView.swift in Sources */,
+				44B018E2994D522474B41BFC /* SaotiCamApp.swift in Sources */,
+				4E93A67A4469A9920E000279 /* SerialStreamClient.swift in Sources */,
+				38B30248004FE7FF5F5A6C4B /* StreamClient.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		09D588EC9B293098D997BBFB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SaotiCam/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.saoti.SaotiCam;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		23A93A63888C84D25F11CA3C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SaotiCam/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.saoti.SaotiCam;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		97E9E35832F4C796D184883C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		E86850B47140AED44704E5DF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1AB6C48191F54702EBBA6E38 /* Build configuration list for PBXProject "SaotiCam" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E86850B47140AED44704E5DF /* Debug */,
+				97E9E35832F4C796D184883C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		540E13466FD10E9FC5A7769B /* Build configuration list for PBXNativeTarget "SaotiCam" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				09D588EC9B293098D997BBFB /* Debug */,
+				23A93A63888C84D25F11CA3C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E2B44BB64EF9C4550D4C0DDE /* Project object */;
+}

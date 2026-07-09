@@ -1,0 +1,19 @@
+.DS_Store
+**/.DS_Store
+
+# PlatformIO
+firmware/.pio/
+firmware/platformio.local.ini
+
+# Xcode / macOS app build
+macos-app/build/
+macos-app/DerivedData/
+macos-app/**/xcuserdata/
+macos-app/*.xcuserstate
+macos-app/**/*.xcuserstate
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~

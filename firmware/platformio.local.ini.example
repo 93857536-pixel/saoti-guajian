@@ -1,0 +1,8 @@
+# PlatformIO 本地配置（可选）
+
+[env:extra]
+extends = env:esp32s3-devkitc-1
+
+; 在此覆盖 upload_port / monitor_port，例如：
+; upload_port = /dev/cu.usbmodem101
+; monitor_port = /dev/cu.usbmodem101
