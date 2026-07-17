@@ -9,6 +9,7 @@ struct UploadResult {
   bool ok = false;
   int httpCode = 0;
   const char* error = nullptr;
+  const char* via = nullptr;  // "WiFi" or "SIM"
 };
 
 class Modem {

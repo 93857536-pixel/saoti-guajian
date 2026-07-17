@@ -29,36 +29,44 @@ void modemLogHex(const char* label, const String& buf) {
 }
 
 void modemPreparePins() {
+  // UART 空闲高 + PEN 使能（FS-MCore 店家要求 PEN 常接 3.3V）
   pinMode(pins::MODEM_TX, OUTPUT);
   digitalWrite(pins::MODEM_TX, HIGH);
   pinMode(pins::MODEM_RX, INPUT_PULLUP);
+  if (pins::MODEM_PEN >= 0) {
+    pinMode(pins::MODEM_PEN, OUTPUT);
+    digitalWrite(pins::MODEM_PEN, HIGH);
+    Serial.printf("[NET] PEN GPIO%d = HIGH (enable)\n", pins::MODEM_PEN);
+  }
+  if (pins::MODEM_PWRKEY >= 0) {
+    pinMode(pins::MODEM_PWRKEY, OUTPUT);
+    digitalWrite(pins::MODEM_PWRKEY, HIGH);
+  }
   if (pins::MODEM_RESET >= 0) {
     pinMode(pins::MODEM_RESET, OUTPUT);
     digitalWrite(pins::MODEM_RESET, HIGH);
   }
-  pinMode(pins::MODEM_PWRKEY, OUTPUT);
-  digitalWrite(pins::MODEM_PWRKEY, HIGH);
 }
 
-void modemPowerOn() {
-  modemPreparePins();
-  // Optional hardware reset pulse (active low on many A7670 boards).
-  if (pins::MODEM_RESET >= 0) {
-    digitalWrite(pins::MODEM_RESET, LOW);
-    delay(200);
-    digitalWrite(pins::MODEM_RESET, HIGH);
-    delay(500);
+void modemPulsePwk() {
+  if (pins::MODEM_PWRKEY < 0) {
+    return;
   }
   digitalWrite(pins::MODEM_PWRKEY, HIGH);
   delay(300);
-  // SIMCom A7670: PWRKEY low >= ~1s to power on.
   digitalWrite(pins::MODEM_PWRKEY, LOW);
   delay(1200);
   digitalWrite(pins::MODEM_PWRKEY, HIGH);
-  Serial.println("[NET] PWRKEY done, wait boot...");
-  delay(8000);
+  Serial.printf("[NET] PWK GPIO%d pulse done, wait boot...\n", pins::MODEM_PWRKEY);
+}
+
+void modemPowerOn() {
+  // 只拉 PEN；不默认脉冲 PWK（模块已开机时脉冲会反复重启 → AT 无响应）
+  modemPreparePins();
+  Serial.println("[NET] PEN on, wait UART (no PWK yet)...");
+  delay(3000);
   modemDrainRx();
-  delay(500);
+  delay(200);
   modemDrainRx();
 }
 
@@ -77,6 +85,11 @@ bool modemWaitToken(const char* token, uint32_t timeoutMs, String* out) {
         return true;
       }
       if (buf.indexOf("ERROR") >= 0) {
+        // 等齐 +CME ERROR: xx 整行，避免只看到 ERROR 截断
+        delay(80);
+        while (kModemUart.available()) {
+          buf += static_cast<char>(kModemUart.read());
+        }
         if (out) {
           *out = buf;
         }
@@ -106,10 +119,18 @@ bool modemSendAt(const char* cmd, uint32_t timeoutMs, String* out = nullptr) {
       Serial.write(c);
       buf += c;
       if (buf.indexOf("OK") >= 0 || buf.indexOf("ERROR") >= 0) {
+        if (buf.indexOf("ERROR") >= 0) {
+          delay(80);
+          while (kModemUart.available()) {
+            const char e = static_cast<char>(kModemUart.read());
+            Serial.write(e);
+            buf += e;
+          }
+        }
         if (out) {
           *out = buf;
         }
-        return buf.indexOf("OK") >= 0;
+        return buf.indexOf("OK") >= 0 && buf.indexOf("ERROR") < 0;
       }
     }
     delay(10);
@@ -128,38 +149,61 @@ bool modemSendAt(const char* cmd, uint32_t timeoutMs, String* out = nullptr) {
 bool modemProbePins(uint32_t baud, int rxPin, int txPin) {
   kModemUart.end();
   kModemUart.begin(baud, SERIAL_8N1, rxPin, txPin);
-  delay(200);
+  delay(MODEM_FAST_PROBE ? 80 : 200);
   Serial.printf("[NET] probe TX=%d RX=%d @ %lu\n", txPin, rxPin,
                 static_cast<unsigned long>(baud));
-  for (int i = 0; i < 2; ++i) {
-    if (modemSendAt("AT", 2500)) {
+  const int tries = MODEM_FAST_PROBE ? 1 : 2;
+  const uint32_t atTimeout = MODEM_FAST_PROBE ? 800 : 2500;
+  for (int i = 0; i < tries; ++i) {
+    if (modemSendAt("AT", atTimeout)) {
       Serial.printf("[NET] AT OK TX=%d RX=%d @ %lu\n", txPin, rxPin,
                     static_cast<unsigned long>(baud));
       return true;
     }
-    delay(400);
+    if (!MODEM_FAST_PROBE) {
+      delay(400);
+    }
   }
   return false;
 }
 
 bool modemProbeAll() {
-  // pair = {rxPin, txPin}; also try swapped TX/RX and ASSEMBLY vs alt pins.
-  const uint32_t bauds[] = {115200, 9600, 57600, 460800, 921600};
+  const int primaryRx = pins::MODEM_RX;
+  const int primaryTx = pins::MODEM_TX;
+
+  Serial.printf("[NET] probe primary TX=%d RX=%d @ 115200\n", primaryTx,
+                primaryRx);
+  if (modemProbePins(115200, primaryRx, primaryTx)) {
+    modemSendAt("ATE0", 2000);
+    modemSendAt("AT+IFC=0,0", 2000);
+    return true;
+  }
+
+  // 交叉接反再试一次
+  if (modemProbePins(115200, primaryTx, primaryRx)) {
+    modemSendAt("ATE0", 2000);
+    modemSendAt("AT+IFC=0,0", 2000);
+    return true;
+  }
+
+#if !MODEM_FAST_PROBE
+  const uint32_t primaryBauds[] = {9600, 57600};
   const int pairs[][2] = {
-      {pins::MODEM_RX, pins::MODEM_TX},          // 47/21 (default, away from USB UART)
-      {pins::MODEM_TX, pins::MODEM_RX},          // swapped
-      {pins::MODEM_RX_ALT, pins::MODEM_TX_ALT},  // 44/43 (ASSEMBLY old table)
-      {pins::MODEM_TX_ALT, pins::MODEM_RX_ALT},  // alt swapped
+      {primaryRx, primaryTx},
+      {primaryTx, primaryRx},
+      {pins::MODEM_RX_ALT, pins::MODEM_TX_ALT},
+      {pins::MODEM_TX_ALT, pins::MODEM_RX_ALT},
   };
-  for (const auto& pair : pairs) {
-    for (uint32_t baud : bauds) {
-      if (modemProbePins(baud, pair[0], pair[1])) {
+  for (size_t pi = 0; pi < sizeof(pairs) / sizeof(pairs[0]); ++pi) {
+    for (uint32_t baud : primaryBauds) {
+      if (modemProbePins(baud, pairs[pi][0], pairs[pi][1])) {
         modemSendAt("ATE0", 2000);
         modemSendAt("AT+IFC=0,0", 2000);
         return true;
       }
     }
   }
+#endif
   return false;
 }
 
@@ -183,12 +227,110 @@ bool modemTryApn(const char* apn) {
   return true;
 }
 
+String modemExtractDigits(const String& s) {
+  String out;
+  for (size_t i = 0; i < s.length(); ++i) {
+    const char c = s[i];
+    if (c >= '0' && c <= '9') {
+      out += c;
+    }
+  }
+  return out;
+}
+
+// 蜗牛是转售品牌：按 IMSI 前缀选底层运营商 APN
+void modemApplyApnForImsi(const String& imsi) {
+  if (imsi.length() < 5) {
+    return;
+  }
+  const String p = imsi.substring(0, 5);
+  const char* apn = CELL_APN;
+  const char* tag = "default";
+  if (p == "46000" || p == "46002" || p == "46004" || p == "46007" ||
+      p == "46008") {
+    apn = "cmiot";
+    tag = "移动物联(蜗牛常见)";
+  } else if (p == "46001" || p == "46006" || p == "46009") {
+    apn = "wonet";
+    tag = "联通";
+  } else if (p == "46003" || p == "46005" || p == "46011") {
+    apn = "ctnet";
+    tag = "电信";
+  }
+  kActiveApn = apn;
+  Serial.printf("[NET] IMSI=%s → %s APN=%s\n", imsi.c_str(), tag, apn);
+}
+
+bool modemWaitSimReady(uint32_t timeoutMs = 45000) {
+  modemSendAt("AT+CMEE=2", 2000);  // 详细 CME 错误文本
+  modemSendAt("AT+CFUN=1", 10000);
+  const uint32_t start = millis();
+  int attempt = 0;
+  while (millis() - start < timeoutMs) {
+    ++attempt;
+    String resp;
+    modemSendAt("AT+CPIN?", 5000, &resp);
+    if (resp.indexOf("READY") >= 0) {
+      Serial.printf("[NET] SIM READY (attempt %d)\n", attempt);
+      String imsiResp;
+      modemSendAt("AT+CIMI", 5000, &imsiResp);
+      const String imsi = modemExtractDigits(imsiResp);
+      if (imsi.length() >= 15) {
+        modemApplyApnForImsi(imsi.substring(0, 15));
+      }
+      modemSendAt("AT+CICCID", 5000);
+      modemSendAt("AT+CCID", 5000);
+      // 本机号码（很多物联卡 SIM 里未写入，可能为空）
+      String cnum;
+      modemSendAt("AT+CNUM", 5000, &cnum);
+      if (cnum.indexOf("+CNUM:") >= 0) {
+        Serial.printf("[NET] phone/CNUM raw: %s\n", cnum.c_str());
+      } else {
+        Serial.println("[NET] CNUM empty — 物联卡号码多在蜗牛 App/卡板印刷，SIM 内常无号");
+      }
+      return true;
+    }
+    if (resp.indexOf("not inserted") >= 0 || resp.indexOf("NOT INSERTED") >= 0) {
+      Serial.printf("[NET] SIM not inserted (%d) — 重新插紧 Nano 卡\n", attempt);
+    } else {
+      Serial.printf("[NET] SIM not ready yet (%d): %s\n", attempt,
+                    resp.length() ? resp.c_str() : "(empty)");
+    }
+    delay(2000);
+  }
+  Serial.println("[NET] SIM timeout — 卡座/方向/激活；蜗牛 App 开通流量后再测");
+  return false;
+}
+
+bool modemWaitRegistered(uint32_t timeoutMs) {
+  const uint32_t start = millis();
+  while (millis() - start < timeoutMs) {
+    String r;
+    modemSendAt("AT+CEREG?", 3000, &r);
+    if (r.indexOf(",1") >= 0 || r.indexOf(",5") >= 0) {
+      Serial.println("[NET] LTE registered");
+      return true;
+    }
+    modemSendAt("AT+CREG?", 3000, &r);
+    if (r.indexOf(",1") >= 0 || r.indexOf(",5") >= 0) {
+      Serial.println("[NET] CS registered");
+      return true;
+    }
+    modemSendAt("AT+CSQ", 3000);
+    delay(3000);
+  }
+  Serial.println("[NET] register timeout (CREG/CEREG still searching)");
+  return false;
+}
+
 bool modemEnsureNetwork() {
   if (kNetworkOpen) {
     return true;
   }
   modemSendAt("ATE0", 2000);
-  modemSendAt("AT+CPIN?", 8000);
+  if (!modemWaitSimReady(45000)) {
+    return false;
+  }
   String csqResp;
   modemSendAt("AT+CSQ", 3000, &csqResp);
   {
@@ -197,16 +339,19 @@ bool modemEnsureNetwork() {
       kLastCsq = csqResp.substring(idx + 5).toInt();
     }
   }
+  modemSendAt("AT+COPS=0", 30000);
   modemSendAt("AT+COPS?", 5000);
+  (void)modemWaitRegistered(60000);
   modemSendAt("AT+CREG?", 3000);
   modemSendAt("AT+CGREG?", 3000);
   modemSendAt("AT+CEREG?", 3000);
-  if (!modemSendAt("AT+CGATT=1", 20000)) {
+  if (!modemSendAt("AT+CGATT=1", 30000)) {
     Serial.println("[NET] CGATT failed");
   }
 
-  // Prefer runtime APN (set from Mac App), then compile-time fallbacks.
-  const char* apns[] = {kActiveApn.c_str(), CELL_APN, CELL_APN_FALLBACKS};
+  // 蜗牛移动制式优先 cmiot → cmmtm → cmnet，再试编译期备用
+  const char* apns[] = {kActiveApn.c_str(), "cmiot", "cmmtm", "cmnet", CELL_APN,
+                        CELL_APN_FALLBACKS};
   for (const char* apn : apns) {
     if (!apn || apn[0] == '\0') {
       continue;
@@ -290,12 +435,12 @@ void prepareModemPins() { modemPreparePins(); }
 
 void Modem::wifiBegin() {
 #if USE_WIFI_FALLBACK
-  wifiReady_ = false;
-  if (strlen(WIFI_SSID) == 0 || strcmp(WIFI_SSID, "YOUR_SSID") == 0) {
-    Serial.println("[NET] WiFi skipped (SSID not configured)");
+  if (WIFI_SSID[0] == '\0' || strcmp(WIFI_SSID, "YOUR_SSID") == 0) {
+    Serial.println("[NET] WiFi STA skipped (SoftAP may already be up)");
     return;
   }
-  WiFi.mode(WIFI_STA);
+  wifiReady_ = false;
+  WiFi.mode(WIFI_AP_STA);
   Serial.printf("[NET] WiFi connecting %s ...\n", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 #endif
@@ -303,7 +448,11 @@ void Modem::wifiBegin() {
 
 bool Modem::wifiEnsureConnected() {
 #if USE_WIFI_FALLBACK
-  if (strlen(WIFI_SSID) == 0 || strcmp(WIFI_SSID, "YOUR_SSID") == 0) {
+  if (WIFI_SSID[0] == '\0' || strcmp(WIFI_SSID, "YOUR_SSID") == 0) {
+    if (streamingApMode_) {
+      wifiReady_ = true;
+      return true;
+    }
     wifiReady_ = false;
     return false;
   }
@@ -311,24 +460,26 @@ bool Modem::wifiEnsureConnected() {
     wifiReady_ = true;
     return true;
   }
-  const wl_status_t st = WiFi.status();
-  if (st == WL_DISCONNECTED || st == WL_CONNECTION_LOST ||
-      st == WL_NO_SSID_AVAIL) {
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-  }
+  // IDLE/失败等状态都要主动 begin，否则永远等不到连接
+  WiFi.persistent(false);
+  WiFi.mode(streamingApMode_ ? WIFI_AP_STA : WIFI_STA);
+  Serial.printf("[NET] WiFi connecting %s ...\n", WIFI_SSID);
+  WiFi.disconnect(false, true);
+  delay(100);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
   const uint32_t start = millis();
   while (millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
-    if (WiFi.status() == WL_CONNECTED) {
+    const wl_status_t st = WiFi.status();
+    if (st == WL_CONNECTED) {
       wifiReady_ = true;
       Serial.printf("[NET] WiFi OK %s\n", WiFi.localIP().toString().c_str());
       return true;
     }
-    delay(100);
+    delay(200);
   }
-  wifiReady_ = false;
-  Serial.println("[NET] WiFi FAIL");
-  return false;
+  wifiReady_ = streamingApMode_;
+  Serial.printf("[NET] WiFi FAIL status=%d\n", static_cast<int>(WiFi.status()));
+  return streamingApMode_;
 #else
   wifiReady_ = false;
   return false;
@@ -352,7 +503,7 @@ bool Modem::scanUartPins() {
   Serial.println("[NET] tip: 主控板红/蓝灯≠4G模块灯；模块常只有电源红灯");
   modemPowerOn();
 
-  // 避开摄像头 DVP/SCCB(4-13,15-18)、PWRKEY(41)、RESET(42)
+  // 避开摄像头 DVP/SCCB(4-13,15-18)；41/42 若曾接 PWK/RST 也避开乱扫
   const int cands[] = {1, 2, 3, 14, 19, 20, 21, 38, 39, 40, 43, 44, 45, 46, 47, 48};
   const uint32_t bauds[] = {115200, 9600};
   int hits = 0;
@@ -441,7 +592,8 @@ bool Modem::scanUartPins() {
   }
 
   Serial.printf("[NET] ==== UART scan FAIL (hits=%d) ====\n", hits);
-  Serial.println("[NET] 请确认: 模块5V/GND/PEN、TX-RX交叉、天线；红灯常亮仅表示上电");
+  Serial.println("[NET] 请确认: VIN≥5V/2A+共地、PEN=3V3/GPIO48、PWK=GPIO47、TX-RX交叉；"
+                 "红灯=上电，蓝灯≈已开机；FreeAT/USB 可先验模块");
   return false;
 #endif
 }
@@ -457,19 +609,13 @@ bool Modem::runDiagnostics() {
       return false;
     }
   }
-  Serial.println("[NET] diag: SIM/network probe (蜗牛移动)...");
+  Serial.println("[NET] diag: SIM/network probe (蜗牛→按IMSI选APN, 默认cmiot)...");
   modemSendAt("ATI", 3000);
-  modemSendAt("AT+CPIN?", 8000);
-  modemSendAt("AT+CIMI", 5000);
-  modemSendAt("AT+CCID", 5000);
-  modemSendAt("AT+CSQ", 3000);
-  modemSendAt("AT+COPS?", 5000);
-  modemSendAt("AT+CREG?", 3000);
-  modemSendAt("AT+CGATT?", 5000);
+  modemSendAt("AT+CMEE=2", 2000);
   kNetworkOpen = false;
   const bool net = modemEnsureNetwork();
-  Serial.printf("[NET] diag: network %s (APN primary=%s)\n", net ? "OK" : "FAIL",
-                CELL_APN);
+  Serial.printf("[NET] diag: network %s (APN primary=%s active=%s)\n",
+                net ? "OK" : "FAIL", CELL_APN, kActiveApn.c_str());
   return net;
 }
 
@@ -531,22 +677,38 @@ bool Modem::beginHardware() {
                   isWifiReady() ? "OK" : "FAIL", isCellReady() ? "OK" : "FAIL");
     return isReady();
   }
-  Serial.println("[NET] A7670G init...");
-  Serial.printf("[NET] UART TX=%d RX=%d PWRKEY=%d APN=%s\n", pins::MODEM_TX,
-                pins::MODEM_RX, pins::MODEM_PWRKEY, CELL_APN);
+  Serial.println("[NET] FS-MCore-A7670G init...");
+  Serial.printf("[NET] UART TX=%d RX=%d PEN=%d PWK=%d APN=%s\n", pins::MODEM_TX,
+                pins::MODEM_RX, pins::MODEM_PEN, pins::MODEM_PWRKEY, CELL_APN);
   modemPowerOn();
-  if (!modemProbeAll()) {
-    Serial.println("[NET] modem not responding (check 5V/PEN/TX/RX)");
+  bool ok = modemProbeAll();
+#if MODEM_PULSE_PWRKEY
+  if (!ok && pins::MODEM_PWRKEY >= 0) {
+    Serial.println("[NET] AT silent — try one PWK pulse...");
+    modemPulsePwk();
+    delay(MODEM_BOOT_WAIT_MS);
+    modemDrainRx();
+    ok = modemProbeAll();
+  }
+#endif
+  if (!ok) {
+    Serial.println("[NET] modem not responding — check VIN5V/共地/PEN→48高/PWK→47/"
+                   "TX-RX交叉(21↔模RX,2↔模TX)；或用 FreeAT/USB 先验模块");
     cellReady_ = false;
   } else {
     modemSendAt("ATE0", 2000);
     cellReady_ = true;
-    Serial.println("[NET] A7670G UART ready");
-    modemSendAt("AT+CPIN?", 8000);
+    Serial.println("[NET] A7670 UART ready");
+    delay(2000);
+    (void)modemWaitSimReady(20000);
     modemSendAt("AT+CSQ", 3000);
     modemSendAt("AT+COPS?", 5000);
   }
-  wifiEnsureConnected();
+  if (streamingApMode_) {
+    wifiReady_ = true;
+  } else {
+    wifiEnsureConnected();
+  }
   Serial.printf("[NET] status: WiFi=%s 4G=%s\n",
                 isWifiReady() ? "OK" : "FAIL", isCellReady() ? "OK" : "FAIL");
   return isReady();
@@ -572,12 +734,14 @@ UploadResult Modem::uploadWithFailover(const uint8_t* data, size_t len) {
   if (wifiConfigured && (isWifiReady() || wifiEnsureConnected())) {
     Serial.println("[NET] upload via WiFi");
     r = uploadWifi(data, len);
+    r.via = "WiFi";
     if (r.ok) {
       return r;
     }
     if (isCellReady()) {
       Serial.println("[NET] failover to 4G");
       r = uploadHardware(data, len);
+      r.via = "SIM";
       if (r.ok) {
         return r;
       }
@@ -588,12 +752,15 @@ UploadResult Modem::uploadWithFailover(const uint8_t* data, size_t len) {
   if (isCellReady()) {
     Serial.println("[NET] upload via 4G");
     r = uploadHardware(data, len);
+    r.via = "SIM";
     if (r.ok) {
       return r;
     }
     if (wifiEnsureConnected()) {
       Serial.println("[NET] failover to WiFi");
-      return uploadWifi(data, len);
+      r = uploadWifi(data, len);
+      r.via = "WiFi";
+      return r;
     }
     return r;
   }
@@ -601,23 +768,29 @@ UploadResult Modem::uploadWithFailover(const uint8_t* data, size_t len) {
   if (isCellReady()) {
     Serial.println("[NET] upload via 4G");
     r = uploadHardware(data, len);
+    r.via = "SIM";
     if (r.ok) {
       return r;
     }
     if (wifiEnsureConnected()) {
       Serial.println("[NET] failover to WiFi");
-      return uploadWifi(data, len);
+      r = uploadWifi(data, len);
+      r.via = "WiFi";
+      return r;
     }
     return r;
   }
   if (wifiEnsureConnected()) {
     Serial.println("[NET] upload via WiFi");
-    return uploadWifi(data, len);
+    r = uploadWifi(data, len);
+    r.via = "WiFi";
+    return r;
   }
 #endif
 
   r.ok = false;
   r.error = "no network";
+  r.via = nullptr;
   return r;
 }
 
@@ -686,7 +859,10 @@ UploadResult Modem::uploadWifi(const uint8_t* data, size_t len) {
 
 bool Modem::startStreamingSoftAp() {
 #if STREAM_ENABLE
-  WiFi.mode(WIFI_AP);
+  // 已配置可上网 WiFi 时用 AP_STA，避免 SoftAP 把 STA 踢掉（ChatGPT 需要上网）
+  const bool hasSta =
+      WIFI_SSID[0] != '\0' && strcmp(WIFI_SSID, "YOUR_SSID") != 0;
+  WiFi.mode(hasSta ? WIFI_AP_STA : WIFI_AP);
   if (!WiFi.softAP(STREAM_AP_SSID, STREAM_AP_PASS)) {
     Serial.println("[NET] SoftAP start failed");
     streamingApMode_ = false;
@@ -695,8 +871,9 @@ bool Modem::startStreamingSoftAp() {
   }
   streamingApMode_ = true;
   wifiReady_ = true;
-  Serial.printf("[NET] SoftAP %s / %s IP %s\n", STREAM_AP_SSID, STREAM_AP_PASS,
-                WiFi.softAPIP().toString().c_str());
+  Serial.printf("[NET] SoftAP %s / %s IP %s%s\n", STREAM_AP_SSID, STREAM_AP_PASS,
+                WiFi.softAPIP().toString().c_str(),
+                hasSta ? " (AP+STA)" : "");
   return true;
 #else
   return false;
@@ -707,10 +884,13 @@ bool Modem::ensureWifiForStreaming() {
 #if STREAM_ENABLE
   streamingApMode_ = false;
 
-  if (strlen(WIFI_SSID) > 0 && strcmp(WIFI_SSID, "YOUR_SSID") != 0) {
+  const bool hasSta = WIFI_SSID[0] != '\0' && strcmp(WIFI_SSID, "YOUR_SSID") != 0;
+  if (hasSta) {
     if (wifiEnsureConnected()) {
       Serial.printf("[NET] streaming via STA %s\n",
                     WiFi.localIP().toString().c_str());
+      // 同时开 SoftAP，手机可直连看预览/答案
+      startStreamingSoftAp();
       return true;
     }
     Serial.println("[NET] STA failed, fallback to SoftAP");

@@ -47,12 +47,15 @@ pio run -e esp32s3-devkitc-1 -t upload          # 真屏 + 全功能
 
 ## 硬件要点
 
-- 主控：ESP32-S3 N16R8（如 YD-ESP32-23）
-- 摄像头：OV5640
-- 屏幕：ST7789 1.3" 240×240（**带 PCB 排针/PH2.0**，接 GPIO 35–40）
-- 4G：飞思创 A7670G（UART 默认 ESP TX=21 / RX=47）
+- 主控：YD-ESP32-S3 **N16R8**（下焊排针）
+- 摄像头：微雪 **OV5640 Camera Board (C)**（DVP，杜邦）
+- 屏幕：微雪 **1.3" ST7789**（PCB + 杜邦/PH2.0）
+- 4G：FS-MCore **A7670**（UART：ESP TX=21→模 RX，模 TX→ESP 2；PWK=47，PEN=48）
+- 电源：一体充放电板 + ICR14500（整机 **5V**）
+- 外壳 v7.1：卡扣，外廓 **106×140×70 mm**，见 [`hardware/case/`](hardware/case/)
 
-详细接线见 [`hardware/ASSEMBLY.md`](hardware/ASSEMBLY.md)。
+引脚以 [`firmware/include/pins.h`](firmware/include/pins.h) 为准。  
+接线总图：[`hardware/WIRING.md`](hardware/WIRING.md) / [`hardware/wiring_all.png`](hardware/wiring_all.png)。
 
 ## License
 

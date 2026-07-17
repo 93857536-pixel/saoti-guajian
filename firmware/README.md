@@ -1,86 +1,74 @@
 # 扫题挂件固件
 
-ESP32-S3 扫题挂件 PlatformIO 项目。默认 **mock 模式**，开发板到货即可编译烧录，串口模拟屏幕/摄像头/4G 完整流程。
+YD-ESP32-S3（N16R8）+ ST7789 + OV5640 + A7670。默认烧录即可用真屏整机固件。
 
-## 环境
+3D 外壳（打印）：见 [`cad/PRINT.md`](cad/PRINT.md)，交付 `cad/stl/saoti_front.stl` + `saoti_back.stl`。
 
-- [PlatformIO](https://platformio.org/) — **已安装**（Core 6.1.19 + Cursor 插件）
-- 板子：**ESP32-S3-DevKitC-1 N16R8**
-- 连接：Type-C 数据线
+**AI 解题**：家用 WiFi + 阿里云通义 VL（`qwen-vl-plus`）。  
+**4G**：开机探测 + 上传兜底（需模块蓝灯/独立 5V；硬件未通时不影响 WiFi 扫题）。
 
-### 已安装组件
+## 功能清单
 
-| 组件 | 状态 |
-|------|------|
-| PlatformIO Core (`pio`) | `pip3 install`，路径 `~/Library/Python/3.9/bin` |
-| Cursor 插件 `platformio.platformio-ide` | 已从 VSIX 安装 |
-| Cursor 插件 `davidgomes.platformio-ide-cursor` | OpenVSX 兼容版 |
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| ST7789 显示 | 可用 | 状态页 + ASCII 答案摘要 |
+| OV5640 拍照扫题 | 可用* | 短按 BOOT / 串口 `s` / SoftAP `/scan` |
+| 无摄像头降级 | 可用 | 固定题图测 AI；长按 BOOT / `t` / SoftAP `/test` |
+| SoftAP 控制台 | 可用 | `/` `/answer` `/status` `/test` `/stream` |
+| WiFi + 通义 VL | 可用 | 填 `secrets.h` |
+| 4G A7670 | 代码就绪 | 依赖独立 5V 与模块开机；串口 `NET`/`DIAG` |
+| USB 推流 | 可选 | 串口 `V`/`v` |
 
-终端若找不到 `pio`，先执行：
-
-```bash
-source ~/Documents/saoti-guajian-fw/scripts/pio-env.sh
-```
-
-或在 Cursor 里 **重新加载窗口**（Cmd+Shift+P → `Reload Window`），左侧应出现 PlatformIO 图标（蚂蚁头）。
+\* 成像质量取决于摄像头硬件与接线；微雪 C 型按 **D2–D9→GPIO6–13**（见 [WIRING.md](WIRING.md)）。
 
 ## 快速开始
 
 ```bash
 cd ~/Documents/saoti-guajian-fw
-pio run -t upload
-pio device monitor
+cp include/secrets.example.h include/secrets.h   # 首次
+# 编辑 secrets.h：OPENAI_API_KEY（百炼）+ 可上网 WiFi
+pio run -e esp32s3-devkitc-1 -t upload
 ```
 
-1. 打开串口监视器 **115200**
-2. 按开发板 **BOOT 键（GPIO0）** 或串口输入 **`s`** 触发一次扫题流程
-3. 串口会打印：`CAPTURE → UPLOAD → RESULT`
+1. 屏显示 Idle 提示（`BOOT to scan` 或 `BOOT=AI test`）
+2. **短按 BOOT**：有摄像头则拍照解题；无摄像头则固定图测 AI  
+3. **长按 BOOT ≈3s**：固定题图测 AI  
+4. 手机连 SoftAP `SaotiCam` / `saoti1234` → `http://192.168.4.1/`  
+5. 完整中文答案看 `/answer`
 
-## 目录结构
+## 串口命令（115200）
 
-```
-saoti-guajian-fw/
-├── platformio.ini      # 板级配置
-├── include/
-│   ├── config.h        # mock 开关、WiFi、业务参数
-│   ├── pins.h          # 引脚（与 ASSEMBLY.md 一致）
-│   └── modules/        # 模块头文件
-└── src/
-    ├── main.cpp        # 主状态机
-    └── modules/        # 各模块实现
-```
+| 命令 | 作用 |
+|------|------|
+| `s` | 扫题（同短按 BOOT） |
+| `t` | 固定图 AI 测试 |
+| `?` | JSON 状态 |
+| `NET` / `DIAG` | 4G 诊断 |
+| `V` / `v` | 开/关 USB 推流 |
+| `APN=xxx` | 设置蜂窝 APN |
 
-## Mock → 真实硬件
+## AI 配置
 
-| 模块到货 | 操作 |
-|----------|------|
-| ST7789 屏 | `config.h` 设 `USE_MOCK_DISPLAY 0`，配置 TFT_eSPI，实现 `display.cpp` 硬件分支 |
-| OV5640 | `USE_MOCK_CAMERA 0`，添加 esp32-camera，实现 `camera.cpp` |
-| A7670G | `USE_MOCK_MODEM 0`，实现 UART AT 驱动 |
-| 全部硬件 | `pio run -e esp32s3-devkitc-1-hw -t upload` |
+| 项 | 说明 |
+|----|------|
+| `include/secrets.h` | 百炼 Key + WiFi（已 gitignore） |
+| 接口 | `dashscope.../compatible-mode/v1` |
+| 模型 | `qwen-vl-plus`（`config.h` 可改） |
 
-或使用环境 `esp32s3-devkitc-1-hw`（已预置 lib_deps）。
+## 接线
 
-## WiFi 调试上传
+详见 **[WIRING.md](WIRING.md)** 与 `include/pins.h`。
 
-mock 模式下可用 WiFi 代替 4G 测 HTTP 上传。编辑 `include/config.h`：
+摘要：屏 SPI `1/3/38/39/40/41`；摄像 `4/5/6–13/15–18`；4G `ESP21→模RX`、`ESP2←模TX`、`PEN→48`、`PWK→47`，VIN 独立 5V。
 
-```cpp
-#define WIFI_SSID "你的WiFi"
-#define WIFI_PASS "你的密码"
-```
+## 环境
 
-## 引脚
+| env | 用途 |
+|-----|------|
+| `esp32s3-devkitc-1` | 整机（默认，启动探测 4G） |
+| `esp32s3-devkitc-1-nolcd` | 无屏 USB 推流（跳过 modem） |
+| `esp32s3-devkitc-1-4gtest` | 4G 联调 |
+| `esp32s3-modem-bridge` | AT 透传 |
+| `esp32s3-devkitc-1-mock` | 全 mock |
 
-见 `include/pins.h`，与 `~/Documents/saoti-guajian-3d/ASSEMBLY.md` 第 6 章一致。
-
-## 主流程
-
-```
-空闲 → 按键/串口触发 → 拍照 → 上传 → 显示结果 → 回到空闲
-```
-
-## 相关文档
-
-- 组装指南：`~/Documents/saoti-guajian-3d/ASSEMBLY.md`
-- 纯文本版：`~/Documents/saoti-guajian-3d/ASSEMBLY.txt`
+未配置 WiFi 时仍可 SoftAP 预览；解题需 STA 可上网。

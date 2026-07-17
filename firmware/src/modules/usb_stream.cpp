@@ -473,6 +473,9 @@ bool UsbStream::sendFrame() {
   if (!camera_ || !camera_->isReady()) {
     return false;
   }
+  if (camera_->isStreamingPaused()) {
+    return false;
+  }
 
   static uint8_t warmupLeft = 8;
   static uint8_t warmupNulls = 0;
@@ -482,7 +485,7 @@ bool UsbStream::sendFrame() {
     resetWarmup_ = false;
   }
   if (warmupLeft > 0) {
-    camera_fb_t* warm = esp_camera_fb_get();
+    camera_fb_t* warm = camera_->acquireFramebuffer(pdMS_TO_TICKS(200));
     if (warm) {
       if (SerialLock::tryLock()) {
         Serial.printf("[USB] warmup ok fmt=%d len=%u\n",
@@ -490,7 +493,7 @@ bool UsbStream::sendFrame() {
                       static_cast<unsigned>(warm->len));
         SerialLock::unlock();
       }
-      esp_camera_fb_return(warm);
+      camera_->releaseFramebuffer(warm);
       --warmupLeft;
       warmupNulls = 0;
     } else {
@@ -508,7 +511,7 @@ bool UsbStream::sendFrame() {
     return false;
   }
 
-  camera_fb_t* fb = esp_camera_fb_get();
+  camera_fb_t* fb = camera_->acquireFramebuffer(pdMS_TO_TICKS(300));
   if (!fb) {
     ++failCount_;
     if (failCount_ == 1 || failCount_ % 20 == 0) {
@@ -549,7 +552,7 @@ bool UsbStream::sendFrame() {
     }
   }
 
-  esp_camera_fb_return(fb);
+  camera_->releaseFramebuffer(fb);
 
   if (!encoded || !packet_buf || packet_len < 128) {
     if (packet_buf) {

@@ -4,10 +4,12 @@
 #include "serial_lock.h"
 
 #include <cstring>
+#include <vector>
 
 #if !USE_MOCK_CAMERA
 #include "esp_camera.h"
 #include "img_converters.h"
+#include "esp_heap_caps.h"
 #include <Wire.h>
 #if USB_STREAM_ENABLE
 #include "esp32-hal-psram.h"
@@ -177,9 +179,22 @@ void applyOv5640StreamTuning() {
 #if USB_STREAM_COLORBAR_TEST
   setOv5640Colorbar(true);
 #else
-  // Do not touch AE/AGC registers here — some OV5640 modules stop
-  // producing frames after aggressive sensor writes.
-  (void)sensor;
+  // 轻量提亮：本模组默认 JPEG 常接近全黑
+  sensor->set_brightness(sensor, 2);
+  sensor->set_contrast(sensor, 1);
+  sensor->set_saturation(sensor, 0);
+  sensor->set_whitebal(sensor, 1);
+  sensor->set_awb_gain(sensor, 1);
+  sensor->set_exposure_ctrl(sensor, 1);
+  sensor->set_aec2(sensor, 1);
+  sensor->set_gain_ctrl(sensor, 1);
+  sensor->set_gainceiling(sensor, GAINCEILING_64X);
+  if (sensor->set_aec_value) {
+    sensor->set_aec_value(sensor, USB_STREAM_AEC_VALUE > 0 ? USB_STREAM_AEC_VALUE : 1200);
+  }
+  if (sensor->set_agc_gain) {
+    sensor->set_agc_gain(sensor, 16);
+  }
 #endif
 }
 
@@ -321,11 +336,11 @@ bool Camera::recoverForStream() {
 #endif
 
 #if !USE_MOCK_CAMERA
-camera_fb_t* Camera::acquireFramebuffer() {
+camera_fb_t* Camera::acquireFramebuffer(TickType_t timeout) {
   if (!ready_ || !frameMutex_) {
     return nullptr;
   }
-  if (xSemaphoreTake(frameMutex_, portMAX_DELAY) != pdTRUE) {
+  if (xSemaphoreTake(frameMutex_, timeout) != pdTRUE) {
     return nullptr;
   }
   camera_fb_t* fb = esp_camera_fb_get();
@@ -342,6 +357,28 @@ void Camera::releaseFramebuffer(camera_fb_t* fb) {
   if (frameMutex_) {
     xSemaphoreGive(frameMutex_);
   }
+}
+
+void Camera::flushFrames(int count, TickType_t timeout) {
+  for (int i = 0; i < count; ++i) {
+    camera_fb_t* drop = acquireFramebuffer(timeout);
+    if (drop) {
+      releaseFramebuffer(drop);
+    }
+    delay(20);
+  }
+}
+
+camera_fb_t* Camera::grabFrameWithRetry(int attempts) {
+  flushFrames(2, pdMS_TO_TICKS(80));
+  for (int attempt = 0; attempt < attempts; ++attempt) {
+    camera_fb_t* fb = acquireFramebuffer(pdMS_TO_TICKS(400));
+    if (fb) {
+      return fb;
+    }
+    delay(static_cast<uint32_t>(40 + attempt * 40));
+  }
+  return nullptr;
 }
 #endif
 
@@ -365,55 +402,187 @@ CaptureResult Camera::captureMock() {
 }
 
 #if !USE_MOCK_CAMERA
+namespace {
+
+// 本模组硬件 JPEG 经常损坏（~1.5KB、能开个头但读像素失败），解题前重编码。
+size_t trimJpegInPlace(const uint8_t* src, size_t src_len, uint8_t* dst, size_t dst_cap) {
+  size_t soi = SIZE_MAX;
+  for (size_t i = 0; i + 1 < src_len; ++i) {
+    if (src[i] == 0xFF && src[i + 1] == 0xD8) {
+      soi = i;
+      break;
+    }
+  }
+  if (soi == SIZE_MAX) {
+    return 0;
+  }
+  size_t eoi = 0;
+  for (size_t i = src_len; i >= soi + 2; --i) {
+    if (src[i - 2] == 0xFF && src[i - 1] == 0xD9) {
+      eoi = i;
+      break;
+    }
+  }
+  const size_t n = (eoi > soi + 128) ? (eoi - soi) : (src_len - soi);
+  if (n < 128 || n > dst_cap) {
+    return 0;
+  }
+  memcpy(dst, src + soi, n);
+  return n;
+}
+
+bool reencodeJpegBuffer(const uint8_t* buf, size_t len, uint16_t width,
+                        uint16_t height, pixformat_t format,
+                        std::vector<uint8_t>& out) {
+  if (!buf || len < 128 || width < 8 || height < 8) {
+    return false;
+  }
+  if (format != PIXFORMAT_JPEG) {
+    camera_fb_t tmp = {};
+    tmp.buf = const_cast<uint8_t*>(buf);
+    tmp.len = len;
+    tmp.width = width;
+    tmp.height = height;
+    tmp.format = format;
+    uint8_t* jpg = nullptr;
+    size_t jpg_len = 0;
+    const bool ok =
+        frame2jpg(&tmp, CAPTURE_JPEG_QUALITY, &jpg, &jpg_len) && jpg &&
+        jpg_len >= 1024;
+    if (!ok) {
+      free(jpg);
+      return false;
+    }
+    out.assign(jpg, jpg + jpg_len);
+    free(jpg);
+    return true;
+  }
+
+  const size_t w = width;
+  const size_t h = height;
+  const size_t rgb_len = w * h * 3;
+  uint8_t* rgb = static_cast<uint8_t*>(
+      heap_caps_malloc(rgb_len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!rgb) {
+    rgb = static_cast<uint8_t*>(malloc(rgb_len));
+  }
+  if (!rgb) {
+    return false;
+  }
+
+  uint8_t* work = static_cast<uint8_t*>(
+      heap_caps_malloc(len + 64, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!work) {
+    work = static_cast<uint8_t*>(malloc(len + 64));
+  }
+  if (!work) {
+    free(rgb);
+    return false;
+  }
+  size_t work_len = trimJpegInPlace(buf, len, work, len + 64);
+  if (work_len == 0) {
+    free(work);
+    free(rgb);
+    return false;
+  }
+
+  const bool decoded = fmt2rgb888(work, work_len, PIXFORMAT_JPEG, rgb);
+  free(work);
+  if (!decoded) {
+    free(rgb);
+    return false;
+  }
+
+  uint8_t* jpg = nullptr;
+  size_t jpg_len = 0;
+  const bool ok =
+      fmt2jpg(rgb, rgb_len, w, h, PIXFORMAT_RGB888, CAPTURE_JPEG_QUALITY, &jpg,
+              &jpg_len) &&
+      jpg && jpg_len >= 1024;
+  free(rgb);
+  if (!ok) {
+    free(jpg);
+    return false;
+  }
+  out.assign(jpg, jpg + jpg_len);
+  free(jpg);
+  return true;
+}
+
+}  // namespace
+
 CaptureResult Camera::captureHardware() {
   CaptureResult r;
   if (!ready_) {
     r.error = "camera not ready";
     return r;
   }
-  camera_fb_t* fb = acquireFramebuffer();
+
+  camera_fb_t* fb = grabFrameWithRetry(5);
+  if (!fb) {
+    Serial.println("[CAM] fb_get failed — recover + retry");
+    ready_ = recoverJpegCamera();
+    if (ready_) {
+      delay(150);
+      fb = grabFrameWithRetry(5);
+    }
+  }
   if (!fb) {
     r.error = "esp_camera_fb_get failed";
+    flushFrames(3, pdMS_TO_TICKS(50));
     return r;
   }
 
-  if (fb->format == PIXFORMAT_JPEG) {
-    size_t jpeg_len = fb->len;
+  // 先拷贝再归还 fb，避免重编码期间占满 framebuffer（第二次拍照会挂）。
+  const pixformat_t fmt = fb->format;
+  const uint16_t fw = fb->width;
+  const uint16_t fh = fb->height;
+  std::vector<uint8_t> raw(fb->buf, fb->buf + fb->len);
+  releaseFramebuffer(fb);
+  fb = nullptr;
+
+  if (fmt == PIXFORMAT_JPEG) {
+    if (reencodeJpegBuffer(raw.data(), raw.size(), fw, fh, fmt, r.jpeg)) {
+      r.bytes = r.jpeg.size();
+      r.ok = true;
+      flushFrames(2, pdMS_TO_TICKS(50));
+      Serial.printf("[CAM] capture OK %u bytes (re-jpeg %ux%u)\n",
+                    static_cast<unsigned>(r.bytes), fw, fh);
+      return r;
+    }
+
+    size_t jpeg_len = raw.size();
     for (size_t i = jpeg_len; i >= 2; --i) {
-      if (fb->buf[i - 2] == 0xFF && fb->buf[i - 1] == 0xD9) {
+      if (raw[i - 2] == 0xFF && raw[i - 1] == 0xD9) {
         jpeg_len = i;
         break;
       }
     }
-    if (jpeg_len < 512 || fb->buf[0] != 0xFF || fb->buf[1] != 0xD8) {
-      releaseFramebuffer(fb);
+    if (jpeg_len < 512 || raw[0] != 0xFF || raw[1] != 0xD8) {
       r.error = "JPEG invalid";
+      flushFrames(2, pdMS_TO_TICKS(50));
       return r;
     }
-    r.jpeg.assign(fb->buf, fb->buf + jpeg_len);
+    r.jpeg.assign(raw.begin(), raw.begin() + static_cast<std::ptrdiff_t>(jpeg_len));
     r.bytes = jpeg_len;
     r.ok = true;
-    releaseFramebuffer(fb);
-    Serial.printf("[CAM] capture OK %u bytes\n", static_cast<unsigned>(r.bytes));
+    flushFrames(2, pdMS_TO_TICKS(50));
+    Serial.printf("[CAM] capture OK %u bytes (raw hw jpeg)\n",
+                  static_cast<unsigned>(r.bytes));
     return r;
   }
 
-  // USB stream mode may boot RGB565 — encode JPEG in software for upload.
-  uint8_t* jpg = nullptr;
-  size_t jpg_len = 0;
-  const bool ok =
-      frame2jpg(fb, CAPTURE_JPEG_QUALITY, &jpg, &jpg_len) && jpg && jpg_len >= 512;
-  releaseFramebuffer(fb);
-  if (!ok) {
-    free(jpg);
-    r.error = "frame2jpg failed";
+  if (reencodeJpegBuffer(raw.data(), raw.size(), fw, fh, fmt, r.jpeg)) {
+    r.bytes = r.jpeg.size();
+    r.ok = true;
+    flushFrames(2, pdMS_TO_TICKS(50));
+    Serial.printf("[CAM] capture OK %u bytes (sw jpeg)\n",
+                  static_cast<unsigned>(r.bytes));
     return r;
   }
-  r.jpeg.assign(jpg, jpg + jpg_len);
-  free(jpg);
-  r.bytes = jpg_len;
-  r.ok = true;
-  Serial.printf("[CAM] capture OK %u bytes (sw jpeg)\n", static_cast<unsigned>(r.bytes));
+
+  r.error = "frame2jpg failed";
+  flushFrames(2, pdMS_TO_TICKS(50));
   return r;
 }
 #endif

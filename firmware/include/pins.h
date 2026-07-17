@@ -1,48 +1,57 @@
 #pragma once
 
-// 引脚定义与 ASSEMBLY.md 第 6 章一致
-// ST7789 使用 35–40，避免与 OV5640 DVP 冲突
+// 引脚：YD-ESP32-S3 N16R8 实测可用映射（避开 OPI 35–37、USB 19/20、UART0 43/44）
 
 namespace pins {
 
-// ── ST7789 SPI ────────────────────────────────────────────
-constexpr int LCD_MOSI = 35;
-constexpr int LCD_SCLK = 36;
-constexpr int LCD_CS = 37;
-constexpr int LCD_DC = 38;
-constexpr int LCD_RST = 39;
-constexpr int LCD_BL = 40;
+// ── ST7789 SPI（微雪 1.3" 模块）──────────────────────────
+constexpr int LCD_MOSI = 1;   // DIN → 丝印 1
+constexpr int LCD_SCLK = 3;   // CLK → 丝印 3
+constexpr int LCD_CS = 38;
+constexpr int LCD_DC = 39;
+constexpr int LCD_RST = 40;
+constexpr int LCD_BL = 41;
 
 // ── OV5640 DVP / SCCB ─────────────────────────────────────
+// ESP 侧命名 CAM_D0..D7（esp32-camera 8bit）。
+// 微雪 OV5640 Camera Board (C) 丝印是 D2..D9（取 10bit 高 8 位）：
+//   板 D2→GPIO6(=CAM_D0) … 板 D9→GPIO13(=CAM_D7)
+// 正点原子等常见模块丝印 D0..D7 则直接对 CAM_D0..D7。
 constexpr int CAM_XCLK = 15;
-constexpr int CAM_SIOD = 4;
-constexpr int CAM_SIOC = 5;
-constexpr int CAM_D0 = 6;
-constexpr int CAM_D1 = 7;
-constexpr int CAM_D2 = 8;
-constexpr int CAM_D3 = 9;
-constexpr int CAM_D4 = 10;
-constexpr int CAM_D5 = 11;
-constexpr int CAM_D6 = 12;
-constexpr int CAM_D7 = 13;
+constexpr int CAM_SIOD = 4;   // 板 SIOD / SDA
+constexpr int CAM_SIOC = 5;   // 板 SIOC / SCL
+constexpr int CAM_D0 = 6;     // 微雪丝印 D2
+constexpr int CAM_D1 = 7;     // 微雪丝印 D3
+constexpr int CAM_D2 = 8;     // 微雪丝印 D4
+constexpr int CAM_D3 = 9;     // 微雪丝印 D5
+constexpr int CAM_D4 = 10;    // 微雪丝印 D6
+constexpr int CAM_D5 = 11;    // 微雪丝印 D7
+constexpr int CAM_D6 = 12;    // 微雪丝印 D8
+constexpr int CAM_D7 = 13;    // 微雪丝印 D9
 constexpr int CAM_VSYNC = 16;
 constexpr int CAM_HREF = 17;
 constexpr int CAM_PCLK = 18;
-constexpr int CAM_PWDN = -1;
-constexpr int CAM_RESET = -1;
+constexpr int CAM_PWDN = -1;  // 微雪可悬空
+constexpr int CAM_RESET = -1; // 微雪可悬空
 
-// ── A7670G UART ──────────────────────────────────────────
-// 电脑 CH343 占用 UART0(GPIO43/44)，4G 默认走 21/47。
-// 若你按 ASSEMBLY 旧表接了 43/44，探测时会自动尝试。
-constexpr int MODEM_TX = 21;
-constexpr int MODEM_RX = 47;
-constexpr int MODEM_TX_ALT = 43;
-constexpr int MODEM_RX_ALT = 44;
-constexpr int MODEM_PWRKEY = 41;
-constexpr int MODEM_RESET = 42;
-constexpr int MODEM_NET_STATUS = 2;
+// ── FS-MCore-A7670G（全球版 AT）UART ─────────────────────
+// VIN 独立 5V≥2A；PEN→3V3/GPIO48 常高；PWK→GPIO47 开机脉冲；NET 悬空
+// 勿把模 TX 接到旧说明的 GPIO47（那是 PWK）；勿占 LCD 背光 GPIO41
+constexpr int MODEM_TX = 21;  // → 模 RX
+constexpr int MODEM_RX = 2;   // ← 模 TX
+constexpr int MODEM_TX_ALT = 42;
+constexpr int MODEM_RX_ALT = 45;
+constexpr int MODEM_PWRKEY = 47;  // → 模 PWK / PWRKEY
+constexpr int MODEM_PEN = 48;     // → 模 PEN（使能，常高）
+constexpr int MODEM_RESET = -1;
+constexpr int MODEM_NET_STATUS = -1;
 
 // ── 按键（拍照） ──────────────────────────────────────────
-constexpr int BUTTON = 0;  // INPUT_PULLUP，按下 LOW
+constexpr int BUTTON = 0;
+
+// ── 电池电压 ADC（需分压，见 WIRING.md）──────────────────
+// 电池+ → 100k → GPIO14 → 100k → GND（分压比 2）
+// ADC1 脚位已被屏/摄像占满，故用 ADC2 的 GPIO14
+constexpr int BAT_ADC = 14;
 
 }  // namespace pins

@@ -33,7 +33,11 @@ class Camera {
 #endif
 
 #if !USE_MOCK_CAMERA
-  camera_fb_t* acquireFramebuffer();
+  // SoftAP/USB 预览应在拍照前暂停，避免占用 framebuffer。
+  void setStreamingPaused(bool paused) { streamingPaused_ = paused; }
+  bool isStreamingPaused() const { return streamingPaused_; }
+
+  camera_fb_t* acquireFramebuffer(TickType_t timeout = portMAX_DELAY);
   void releaseFramebuffer(camera_fb_t* fb);
   void setColorbar(bool enable);
 #endif
@@ -42,10 +46,13 @@ class Camera {
   CaptureResult captureMock();
 #if !USE_MOCK_CAMERA
   CaptureResult captureHardware();
+  void flushFrames(int count, TickType_t timeout);
+  camera_fb_t* grabFrameWithRetry(int attempts);
 #endif
 
   bool ready_ = false;
 #if !USE_MOCK_CAMERA
   SemaphoreHandle_t frameMutex_ = nullptr;
+  volatile bool streamingPaused_ = false;
 #endif
 };
