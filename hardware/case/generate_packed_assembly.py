@@ -18,22 +18,23 @@ from pathlib import Path
 
 import cadquery as cq
 
-# 与 generate_case.py v7.1 保持一致
+# 与 generate_case.py v7.4 保持一致
 OUTER_L = 106.0
 OUTER_W = 140.0
-OUTER_H = 70.0
+OUTER_H = 108.0
 WALL = 2.0
 CORNER_R = 8.0
 SPLIT_Z = 34.0
+WALL_GAP = 1.0
 INNER_X = OUTER_L / 2 - WALL
 INNER_Y = OUTER_W / 2 - WALL
 
 PWR_LEN_X, PWR_WID_Y, PWR_H = 64.0, 35.8, 20.0
 PWR_CX = -6.0
-PWR_CY = -INNER_Y + PWR_WID_Y / 2 + 0.6
+PWR_CY = -INNER_Y + PWR_WID_Y / 2 + WALL_GAP
 
 ESP_LEN_X, ESP_WID_Y = 64.0, 28.4
-ESP_CX = INNER_X - ESP_LEN_X / 2 - 0.4
+ESP_CX = INNER_X - ESP_LEN_X / 2 - WALL_GAP
 ESP_CY = (PWR_CY + PWR_WID_Y / 2) + 18.0 + ESP_WID_Y / 2
 ESP_BOARD_T = 1.6
 ESP_COMP_H = 10.0  # USB/模组朝后壳外侧
@@ -43,20 +44,20 @@ LCD_BOARD_W, LCD_BOARD_H, LCD_T = 45.0, 31.0, 1.6  # PCB
 LCD_GLASS = 26.5  # 黑边玻璃外廓约
 LCD_VIEW = 23.4  # 可视区
 LCD_MODULE_T = 3.2  # 玻璃+背光相对 PCB 顶面
-LCD_CX, LCD_CY = 0.0, 52.0
+LCD_CX, LCD_CY = 0.0, 44.0
 
 CAM_BOARD_W, CAM_BOARD_H, CAM_BOARD_T = 35.7, 23.9, 2.0
 CAM_LENS_H, CAM_D, CAM_SQ = 10.0, 8.0, 10.5
-CAM_CX, CAM_CY = 0.0, 8.0
+CAM_CX, CAM_CY = 0.0, 0.0
 CAM_LENS_DX = 8.5  # 镜头偏模组端（+X），排针在 -X
 
 MODEM_W, MODEM_H, MODEM_T = 28.0, 26.0, 12.0
 MODEM_CX, MODEM_CY = -22.0, 36.0
 
 ANT_PAD_W, ANT_PAD_H, ANT_PAD_T = 48.0, 14.0, 0.8
-ANT_PAD_CX, ANT_PAD_CY = 0.0, 52.0
+ANT_PAD_CX, ANT_PAD_CY = 0.0, LCD_CY
 
-DUPONT_SIDE = 17.0
+DUPONT_SIDE = 18.0
 
 
 def _box(x: float, y: float, z0: float, sx: float, sy: float, sz: float) -> cq.Workplane:
@@ -275,7 +276,7 @@ def main() -> None:
 
     readme = desk / "README.txt"
     readme.write_text(
-        "扫题挂件 — 打印外壳合盖后配件就位预览（v7.1）\n"
+        "扫题挂件 — 打印外壳合盖后配件就位预览（v7.4）\n"
         "\n"
         "文件说明：\n"
         "  saoti_packed_assembly.stl   推荐：半剖外壳 + 全部配件（能看清内部）\n"

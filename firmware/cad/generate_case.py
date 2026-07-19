@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
 """
-扫题挂件外壳 v7.1 — 全面审计后修正
+扫题挂件外壳 v7.4 — 外接 6×6 拍照键 + v7.3 净高/线长
 
-v7 审计发现的致命问题（已修）：
-  1) ESP 悬在仓中部 → 底边 USB 孔对空气（距内壁 ~55mm）
-  2) BOOT 孔打在电源区，不在 ESP 板上
-  3) 4G 限位与 ESP 杜邦上通道 XY 重叠
+v7.3：后仓净高≥70mm、20cm 杜邦审计。
+v7.4：BOM 轻触开关 6×6 — 左侧壁 Ø12 指孔 + 内凹座（右侧留给 ESP USB）。
 
-v7.1 摆法：
-  - 电源贴底，USB-C 出后壳底边（前壳不开无效孔）
-  - ESP 右移贴右边，USB-C 出后壳右侧壁
-  - BOOT 改后壳，对准 ESP USB 端板载键
-  - 4G 改左上，避开 ESP 杜邦通道
-  - 屏：方屏居中，杜邦/PH2.0 出左右短边
+摆法：
+  - 电源贴底，USB-C 出后壳底边
+  - ESP 靠右，USB-C 出后壳右侧壁
+  - BOOT 后壳对准 ESP（烧录/备用）；外接键在左壁
+  - 4G 左上；屏/摄在前壳
 
 用法:
-  python3 cad/generate_case.py
+  python3 generate_case.py
 """
 
 from __future__ import annotations
@@ -27,21 +24,29 @@ import cadquery as cq
 # ---------- 外廓 ----------
 OUTER_L = 106.0  # X：ESP64 贴右后两侧杜邦/余量
 OUTER_W = 140.0  # Y：屏/摄缝 + 电源/ESP
-OUTER_H = 70.0
+# Z：前壳放屏/摄；后仓须塞下「开发板+杜邦立起+杂线」≥70mm
+OUTER_H = 108.0
 WALL = 2.0
 CORNER_R = 8.0
 LIP = 1.6
-SPLIT_Z = 34.0
-TOL = 0.30
+SPLIT_Z = 34.0  # 前壳深保持；加高全给后仓
+# 通用单边间隙（FDM 收缩/大象脚）；口袋另加 POCKET
+TOL = 0.45
+POCKET = 1.2  # 板件凹槽相对名义尺寸的总加量（约每边 0.6）
+WALL_GAP = 1.0  # 大板与内壁最小空隙（勿 <0.8）
+BACK_STACK_H = 70.0  # 后仓目标净高（开发板栈）
+CABLE_LEN = 200.0  # 母对母杜邦标称长度
+CABLE_BUDGET = 190.0  # 设计上限（留 ≥10mm 弯折；屏优先走左侧更短）
 
 INNER_X = OUTER_L / 2 - WALL  # 51
 INNER_Y = OUTER_W / 2 - WALL  # 68
 
-# ---------- 卡扣 ----------
+# ---------- 卡扣（略减咬合 + 槽位加余量，PETG 更易按入）----------
 CLIP_W = 12.0
-CLIP_T = 1.4
+CLIP_T = 1.3
 CLIP_H = 3.4
-HOOK = 1.1
+HOOK = 0.95
+CLIP_SLOT_EXTRA = 0.35  # 槽相对勾的额外单边间隙
 CLIPS = [
     (0.0, OUTER_W / 2 - WALL - 12.0),
     (0.0, -(OUTER_W / 2 - WALL - 12.0)),
@@ -51,7 +56,7 @@ CLIPS = [
 
 # ---------- 杜邦 ----------
 DUPONT_STACK_H = 12.0
-DUPONT_SIDE_CLEAR = 17.0
+DUPONT_SIDE_CLEAR = 18.0  # was 17：侧向出线再松一点
 WIRE_LOFT_Z = 18.0
 CAM_BUNDLE_W = 12.0
 CAM_BUNDLE_T = 10.0
@@ -60,62 +65,65 @@ CAM_BUNDLE_T = 10.0
 PWR_LEN_X = 64.0
 PWR_WID_Y = 35.8
 PWR_H = 20.0
-PWR_CLEAR = 0.8
-# 底边贴内壁（USB-C 才能出孔）
-PWR_CY = -INNER_Y + PWR_WID_Y / 2 + 0.6  # ≈ -48.5
+PWR_CLEAR = 1.2
+# 底边靠近内壁，但留 WALL_GAP 防打印挤死/USB 对不齐
+PWR_CY = -INNER_Y + PWR_WID_Y / 2 + WALL_GAP
 PWR_CX = -6.0  # 略偏左，给右侧 ESP 让位
-USBC_W, USBC_H = 10.5, 4.2
-USBC_X = PWR_CX  # 底边孔对准模块中部（常见 USB-C 居中偏）
+USBC_W, USBC_H = 12.0, 5.2  # 插头+护套容错
+USBC_X = PWR_CX
 # 电源在后仓：合盖后 USB≈世界Z58 → 后壳局部Z≈12（从外后脸量）
 USBC_Z_B = 12.0
-# 拨动开关：在 USB-C 对边（模块 +Y）；从后壳背面指拨。
-# 槽加长以兼容开关偏左/偏右（各品牌位置不一）。
-SW_SLOT_W, SW_SLOT_H = 28.0, 10.0
+# 拨动开关槽加长加宽，兼容偏位
+SW_SLOT_W, SW_SLOT_H = 34.0, 12.0
 SW_CX = PWR_CX + 6.0
 SW_CY = PWR_CY + PWR_WID_Y / 2 - 2.5
 
 # ---------- ESP：64(X)×28.4(Y)，USB 在 +X 短边 → 出右侧壁 ----------
 ESP_LEN_X, ESP_WID_Y = 64.0, 28.4
-ESP_CX = INNER_X - ESP_LEN_X / 2 - 0.4  # 右缘贴内壁 ≈ 18.6
+ESP_CX = INNER_X - ESP_LEN_X / 2 - WALL_GAP
 # 与电源顶边留 ≥18mm 给杜邦下沿
 _pwr_hi = PWR_CY + PWR_WID_Y / 2
 ESP_CY = _pwr_hi + 18.0 + ESP_WID_Y / 2
-BOOT_D = 5.0
+BOOT_D = 6.5  # 指按 + 键位偏差
+BOOT_SLOT_X = 3.0  # 沿 X 再拉长成腰圆，兼容丝印偏差
 # BOOT 在 USB 端（右端）附近；孔开在后壳（器件面朝后）
 BOOT_CX = ESP_CX + ESP_LEN_X / 2 - 8.0
 BOOT_CY = ESP_CY - 6.0
-ESP_USB_W, ESP_USB_H = 11.0, 4.8
-# ESP 在后仓：USB≈世界Z61 → 后壳局部Z≈9（只开后壳，前壳开孔无效）
+ESP_USB_W, ESP_USB_H = 12.5, 5.6
 ESP_USB_Z = 9.5
 
-# ---------- 屏 / 摄 ----------
-# 微雪 1.3inch LCD Module：PCB 45(长)×31(短)；方形屏大致居中；
-# 接口在短边：一侧 PH2.0，一侧 8 孔排针（杜邦）——出线沿 ±X，不是朝摄像的长边。
+# ---------- 屏 / 摄（相对 v7.2 整体下移，缩短到 ESP 的 20cm 线径）----------
 LCD_BOARD_W, LCD_BOARD_H = 45.0, 31.0
-LCD_VIEW = 24.0  # 可视 23.4，开窗略大；与板同心
-LCD_CX, LCD_CY = 0.0, 52.0  # Y: 36.5~67.5
+LCD_VIEW = 24.5  # 可视 23.4，开窗略松
+LCD_CX, LCD_CY = 0.0, 44.0  # was 52：靠近 ESP，线更短
 
-# 微雪 OV5640 Camera Board (C)：PCB 矩形 35.7×23.9（不是正方形）
-# 方形的是镜头模组；排针在短边一端，镜头偏在另一端（非板心）。
-# 装法：长边沿 X；排针朝 -X；镜头偏 +X。
+# 微雪 OV5640 Camera Board (C)
 CAM_BOARD_W, CAM_BOARD_H = 35.7, 23.9
-CAM_CX, CAM_CY = 0.0, 8.0  # 板中心；与屏缝 ≈16.5
-CAM_POCKET_W = CAM_BOARD_W + 1.6  # 略加大，含排针侧凸出
-CAM_POCKET_H = CAM_BOARD_H + 1.2
-CAM_LENS_DX = 8.5  # 镜头相对板心偏 +X（朝模组端，远离排针）
+CAM_CX, CAM_CY = 0.0, 0.0  # was 8：随屏下移，保持 ≥16mm 缝
+CAM_POCKET_W = CAM_BOARD_W + POCKET + 1.2  # ≈每边再松 ~0.6+
+CAM_POCKET_H = CAM_BOARD_H + POCKET + 0.8
+CAM_LENS_DX = 8.5
 CAM_LENS_DY = 0.0
-CAM_D = 8.5  # 圆孔看镜头
-CAM_SQ = 11.0  # 方形模组凹槽边长
+CAM_D = 9.5  # 镜头圆孔略大，防磨边
+CAM_SQ = 12.5  # 方形模组凹槽（含 TOL 后更松）
 
 # 4G：左上，避开 ESP（右侧）与电源
 MODEM_W, MODEM_H = 28.0, 26.0
 MODEM_CX, MODEM_CY = -22.0, 36.0
 
-ANT_CABLE_W, ANT_CABLE_H = 6.0, 3.0
-ANT_CABLE_X = -18.0  # 靠近 4G
-STRAP_D = 5.5
-ANT_PAD_W, ANT_PAD_H, ANT_PAD_D = 48.0, 14.0, 0.8
-ANT_PAD_CX, ANT_PAD_CY = 0.0, 52.0
+ANT_CABLE_W, ANT_CABLE_H = 8.0, 4.0
+ANT_CABLE_X = -18.0
+STRAP_D = 6.0
+ANT_PAD_W, ANT_PAD_H, ANT_PAD_D = 50.0, 15.0, 0.9
+ANT_PAD_CX, ANT_PAD_CY = 0.0, LCD_CY
+
+# ---------- 外接轻触开关 6×6×5（BOM；GPIO0↔GND）----------
+# 右侧壁给 ESP USB，按键开在后壳左侧壁；Ø12 兼容指按/小键帽
+BTN_BODY = 6.0
+BTN_TRAVEL_H = 5.0  # 开关本体高度（含行程大致占位）
+BTN_HOLE_D = 12.0
+BTN_CY = 18.0  # 左壁 Y：避开底电源与顶天线
+BTN_Z_B = 20.0  # 后壳局部 Z（从外后脸量，约后仓中部）
 
 
 def rounded_box(l: float, w: float, h: float, r: float) -> cq.Workplane:
@@ -159,19 +167,20 @@ def make_clip_hook(cx: float, cy: float, outward_x: float, outward_y: float) -> 
 
 def make_clip_slot(cx: float, cy: float, along_y: bool) -> cq.Workplane:
     h = OUTER_H - SPLIT_Z
+    clear = TOL * 2 + CLIP_SLOT_EXTRA
     if along_y:
         return (
             cq.Workplane("XY")
             .workplane(offset=h - LIP - 0.2)
             .center(cx, cy)
-            .rect(CLIP_W + TOL * 2, CLIP_T + HOOK + TOL * 2)
+            .rect(CLIP_W + clear, CLIP_T + HOOK + clear)
             .extrude(LIP + CLIP_H + 0.5)
         )
     return (
         cq.Workplane("XY")
         .workplane(offset=h - LIP - 0.2)
         .center(cx, cy)
-        .rect(CLIP_T + HOOK + TOL * 2, CLIP_W + TOL * 2)
+        .rect(CLIP_T + HOOK + clear, CLIP_W + clear)
         .extrude(LIP + CLIP_H + 0.5)
     )
 
@@ -195,14 +204,14 @@ def shell_front() -> cq.Workplane:
         cq.Workplane("XY")
         .workplane(offset=-0.1)
         .center(LCD_CX, LCD_CY)
-        .rect(LCD_VIEW + TOL, LCD_VIEW + TOL)
+        .rect(LCD_VIEW + TOL * 1.5, LCD_VIEW + TOL * 1.5)
         .extrude(WALL + 0.4)
     )
     body = body.cut(
         cq.Workplane("XY")
         .workplane(offset=WALL - 0.5)
         .center(LCD_CX, LCD_CY)
-        .rect(LCD_BOARD_W + 0.8, LCD_BOARD_H + 0.8)
+        .rect(LCD_BOARD_W + POCKET, LCD_BOARD_H + POCKET)
         .extrude(-(WALL - 0.35))
     )
     # 屏左右短边出线槽（PH2.0 / 排针杜邦，与微雪实物一致）
@@ -266,12 +275,13 @@ def shell_front() -> cq.Workplane:
 
     # 电源/ESP 的 USB 均在后仓高度，前壳底边/右侧不开孔（避免无效孔）
 
+    # 止口略小于后壳槽（双侧各约 TOL/2 + 0.15），避免合盖卡死
     lip = (
         cq.Workplane("XY")
         .workplane(offset=h - 0.05)
         .box(
-            OUTER_L - 2 * WALL - TOL,
-            OUTER_W - 2 * WALL - TOL,
+            OUTER_L - 2 * WALL - TOL - 0.3,
+            OUTER_W - 2 * WALL - TOL - 0.3,
             LIP + 0.05,
             centered=(True, True, False),
         )
@@ -282,8 +292,8 @@ def shell_front() -> cq.Workplane:
         cq.Workplane("XY")
         .workplane(offset=h - 0.05)
         .box(
-            OUTER_L - 2 * WALL - TOL - 2.6,
-            OUTER_W - 2 * WALL - TOL - 2.6,
+            OUTER_L - 2 * WALL - TOL - 2.9,
+            OUTER_W - 2 * WALL - TOL - 2.9,
             LIP + 0.3,
             centered=(True, True, False),
         )
@@ -331,9 +341,9 @@ def shell_back() -> cq.Workplane:
         cq.Workplane("XY")
         .workplane(offset=h - LIP - TOL)
         .box(
-            OUTER_L - 2 * WALL + TOL,
-            OUTER_W - 2 * WALL + TOL,
-            LIP + TOL + 0.2,
+            OUTER_L - 2 * WALL + TOL + 0.3,
+            OUTER_W - 2 * WALL + TOL + 0.3,
+            LIP + TOL + 0.3,
             centered=(True, True, False),
         )
         .edges("|Z")
@@ -363,7 +373,7 @@ def shell_back() -> cq.Workplane:
         cq.Workplane("XY")
         .workplane(offset=WALL)
         .center(ESP_CX, ESP_CY)
-        .rect(ESP_LEN_X + 1.2, ESP_WID_Y + 1.2)
+        .rect(ESP_LEN_X + POCKET * 2, ESP_WID_Y + POCKET * 2)
         .extrude(2.0)
         .faces(">Z")
         .shell(-1.0)
@@ -398,7 +408,7 @@ def shell_back() -> cq.Workplane:
         cq.Workplane("XY")
         .workplane(offset=WALL)
         .center(MODEM_CX, MODEM_CY)
-        .rect(MODEM_W + 4.0, MODEM_H + DUPONT_SIDE_CLEAR * 0.35 + 2.0)
+        .rect(MODEM_W + 5.0, MODEM_H + DUPONT_SIDE_CLEAR * 0.4 + 2.5)
         .extrude(1.8)
         .faces(">Z")
         .shell(-1.0)
@@ -408,12 +418,12 @@ def shell_back() -> cq.Workplane:
     except Exception:
         pass
 
-    # 底：电源 USB-C
+    # 底：电源 USB-C（孔略大，兼容线材护套与打印收缩）
     body = body.cut(
         cq.Workplane("XZ")
         .workplane(offset=-OUTER_W / 2 + 0.05)
         .center(USBC_X, USBC_Z_B)
-        .rect(USBC_W + TOL, USBC_H + TOL)
+        .rect(USBC_W + TOL * 1.5, USBC_H + TOL)
         .extrude(WALL + 5)
     )
     # 右侧：ESP USB（后壳段）
@@ -421,17 +431,33 @@ def shell_back() -> cq.Workplane:
         cq.Workplane("YZ")
         .workplane(offset=OUTER_L / 2 - 0.05)
         .center(ESP_CY, ESP_USB_Z)
-        .rect(ESP_USB_W + TOL, ESP_USB_H + TOL)
+        .rect(ESP_USB_W + TOL * 1.5, ESP_USB_H + TOL)
         .extrude(-(WALL + 5))
     )
 
-    # BOOT（后壳外底面，对准板载键）
+    # BOOT（后壳外底面；腰圆孔兼容键位偏差）— 烧录/备用，日常用左壁外接键
     body = body.cut(
         cq.Workplane("XY")
         .workplane(offset=-0.05)
         .center(BOOT_CX, BOOT_CY)
-        .circle(BOOT_D / 2 + TOL / 2)
+        .slot2D(BOOT_D + BOOT_SLOT_X + TOL, BOOT_D + TOL, 0)
         .extrude(WALL + 1.2)
+    )
+
+    # 外接 6×6 轻触开关：左侧壁 Ø12 指孔 + 内侧方凹座
+    body = body.cut(
+        cq.Workplane("YZ")
+        .workplane(offset=-OUTER_L / 2 + 0.05)
+        .center(BTN_CY, BTN_Z_B)
+        .circle(BTN_HOLE_D / 2 + TOL / 2)
+        .extrude(WALL + 5)
+    )
+    body = body.cut(
+        cq.Workplane("YZ")
+        .workplane(offset=-OUTER_L / 2 + WALL - 0.15)
+        .center(BTN_CY, BTN_Z_B)
+        .rect(BTN_BODY + POCKET, BTN_BODY + POCKET)
+        .extrude(BTN_TRAVEL_H + 3.0)
     )
 
     # 开关指拨槽（后壳背面，对准电源 +Y 边；加长兼容偏位）
@@ -448,7 +474,7 @@ def shell_back() -> cq.Workplane:
         cq.Workplane("XZ")
         .workplane(offset=OUTER_W / 2 - 0.05)
         .center(ANT_CABLE_X, 11.0)
-        .rect(ANT_CABLE_W, ANT_CABLE_H)
+        .rect(ANT_CABLE_W + TOL, ANT_CABLE_H + TOL * 0.5)
         .extrude(-(WALL + 4))
     )
 
@@ -507,10 +533,10 @@ def audit() -> dict:
     esp_x0, esp_x1 = ESP_CX - ESP_LEN_X / 2, ESP_CX + ESP_LEN_X / 2
     pwr_lo, pwr_hi = PWR_CY - PWR_WID_Y / 2, PWR_CY + PWR_WID_Y / 2
     pwr_x0, pwr_x1 = PWR_CX - PWR_LEN_X / 2, PWR_CX + PWR_LEN_X / 2
-    mod_x0 = MODEM_CX - (MODEM_W + 4) / 2
-    mod_x1 = MODEM_CX + (MODEM_W + 4) / 2
-    mod_y0 = MODEM_CY - (MODEM_H + DUPONT_SIDE_CLEAR * 0.35 + 2) / 2
-    mod_y1 = MODEM_CY + (MODEM_H + DUPONT_SIDE_CLEAR * 0.35 + 2) / 2
+    mod_x0 = MODEM_CX - (MODEM_W + 5) / 2
+    mod_x1 = MODEM_CX + (MODEM_W + 5) / 2
+    mod_y0 = MODEM_CY - (MODEM_H + DUPONT_SIDE_CLEAR * 0.4 + 2.5) / 2
+    mod_y1 = MODEM_CY + (MODEM_H + DUPONT_SIDE_CLEAR * 0.4 + 2.5) / 2
 
     bottom_inner = -INNER_Y
     right_inner = INNER_X
@@ -526,15 +552,25 @@ def audit() -> dict:
     if gap_ep < 17.0:
         issues.append(f"ESP-PWR 缝 {gap_ep:.1f} < 17（杜邦）")
 
-    # USB 可达
-    if abs(pwr_lo - bottom_inner) > 2.5:
-        issues.append(f"电源底边距内壁 {pwr_lo - bottom_inner:.1f}，USB-C 可能够不到")
-    if abs(esp_x1 - right_inner) > 2.5:
-        issues.append(f"ESP 右边距内壁 {right_inner - esp_x1:.1f}，侧 USB 可能够不到")
+    # USB 可达（允许 WALL_GAP～2.5mm 浮动）
+    if not (0.3 <= (pwr_lo - bottom_inner) <= 2.8):
+        issues.append(f"电源底边距内壁 {pwr_lo - bottom_inner:.1f}，USB-C 可能够不到或过松")
+    if not (0.3 <= (right_inner - esp_x1) <= 2.8):
+        issues.append(f"ESP 右边距内壁 {right_inner - esp_x1:.1f}，侧 USB 可能够不到或过松")
 
     # BOOT 在 ESP 板上
     if not (esp_x0 <= BOOT_CX <= esp_x1 and esp_lo <= BOOT_CY <= esp_hi):
         issues.append("BOOT 孔不在 ESP 板范围内")
+
+    # 外接键：左壁、后仓高度内，勿撞电源底边
+    if not (0.0 < BTN_Z_B < (OUTER_H - SPLIT_Z - WALL)):
+        issues.append("外接键 Z 超出后壳")
+    if BTN_CY < pwr_hi + 8:
+        issues.append("外接键 Y 太靠近电源区")
+    if abs(BTN_CY - MODEM_CY) < (MODEM_H / 2 + 8) and MODEM_CX < -10:
+        # 同在左侧区域时留空，避免与 4G 胶壳打架
+        if abs(BTN_CY - MODEM_CY) < 10:
+            issues.append("外接键 Y 与 4G 过近")
 
     # 4G 与 ESP 本体
     if _overlap(mod_x0, mod_x1, esp_x0, esp_x1) > 1 and _overlap(mod_y0, mod_y1, esp_lo, esp_hi) > 1:
@@ -554,6 +590,8 @@ def audit() -> dict:
     back_clear = OUTER_H - SPLIT_Z - WALL
     if back_clear < PWR_H + 4:
         issues.append("后仓电源高度不够")
+    if back_clear < BACK_STACK_H:
+        issues.append(f"后仓净高 {back_clear:.1f} < {BACK_STACK_H:.0f}（开发板+杜邦栈）")
     if SPLIT_Z - WALL < WIRE_LOFT_Z + 6:
         issues.append("前线舱过浅")
 
@@ -565,6 +603,34 @@ def audit() -> dict:
     # 开关槽落在电源板 +Y 边附近
     if not (pwr_x0 <= SW_CX <= pwr_x1 and abs(SW_CY - pwr_hi) < 6):
         issues.append("开关槽未对准电源板顶边区域")
+
+    # 20cm 杜邦：曼哈顿估算（含弯折余量），前壳板 z≈6，后仓板 z≈后壁内收一截
+    z_front = 6.0
+    z_back = OUTER_H - WALL - 12.0
+    bend = 25.0
+
+    def _cable(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> float:
+        return abs(ax - bx) + abs(ay - by) + abs(az - bz) + bend
+
+    cables = {
+        "LCD左→ESP": _cable(
+            LCD_CX - LCD_BOARD_W / 2, LCD_CY, z_front, esp_x0 + 4.0, ESP_CY, z_back
+        ),
+        "LCD右→ESP": _cable(
+            LCD_CX + LCD_BOARD_W / 2, LCD_CY, z_front, esp_x0 + 4.0, ESP_CY, z_back
+        ),
+        "CAM→ESP": _cable(
+            CAM_CX - CAM_BOARD_W / 2, CAM_CY, z_front, esp_x0 + 4.0, ESP_CY, z_back
+        ),
+        "MOD→ESP": _cable(
+            MODEM_CX + MODEM_W / 2, MODEM_CY, z_back, esp_x0 + 4.0, ESP_CY, z_back
+        ),
+        "PWR→ESP": _cable(PWR_CX, pwr_hi - 2.0, z_back, ESP_CX - 10.0, ESP_CY, z_back),
+    }
+    for name, length in cables.items():
+        if length > CABLE_BUDGET:
+            tag = "超标" if length > CABLE_LEN else "余量不足"
+            issues.append(f"杜邦 {name} 约 {length:.0f}mm（预算{CABLE_BUDGET:.0f}/{CABLE_LEN:.0f}）{tag}")
 
     return {
         "issues": issues,
@@ -579,6 +645,7 @@ def audit() -> dict:
         "back_clear": back_clear,
         "lens": (lens_x, lens_y),
         "switch": (SW_CX, SW_CY),
+        "cables": cables,
     }
 
 
@@ -599,14 +666,24 @@ def main() -> None:
     cq.exporters.export(back, str(out / "saoti_back.stl"))
     cq.exporters.export(preview, str(out / "saoti_assembled_preview.stl"))
 
-    print("OK v7.1 ->", out)
+    print("OK v7.4 ->", out)
     print(f"  外廓 {OUTER_L}×{OUTER_W}×{OUTER_H}  前{SPLIT_Z}/后{OUTER_H - SPLIT_Z}")
+    print(f"  容错 TOL={TOL} POCKET={POCKET} WALL_GAP={WALL_GAP} HOOK={HOOK}")
     print(f"  LCD-CAM缝 {a['gap_lcd_cam']:.1f}  ESP-PWR缝 {a['gap_esp_pwr']:.1f}")
     print(f"  电源→底内壁 {a['pwr_to_bottom']:.1f}mm  ESP→右内壁 {a['esp_to_right']:.1f}mm")
-    print(f"  BOOT @ ({BOOT_CX:.1f},{BOOT_CY:.1f}) 后壳  ESP USB→右侧壁")
+    print(f"  BOOT 腰圆 @ ({BOOT_CX:.1f},{BOOT_CY:.1f}) 后壳  ESP USB→右侧壁")
+    print(
+        f"  外接键 6×6 @ 左壁 Y={BTN_CY:.1f} Z={BTN_Z_B:.1f}"
+        f"  指孔Ø{BTN_HOLE_D:.0f} 内凹{BTN_BODY + POCKET:.1f}方"
+    )
     print(f"  摄像板 {CAM_BOARD_W}×{CAM_BOARD_H} 矩形；镜头孔偏 ({a['lens'][0]:.1f},{a['lens'][1]:.1f})")
     print(f"  开关槽 @ ({a['switch'][0]:.1f},{a['switch'][1]:.1f}) 后壳背面 尺寸{SW_SLOT_W}×{SW_SLOT_H}")
-    print(f"  后仓净深 {a['back_clear']:.1f}  杜邦侧向 {DUPONT_SIDE_CLEAR} 线舱Z {WIRE_LOFT_Z}")
+    print(
+        f"  后仓净高 {a['back_clear']:.1f}mm（目标≥{BACK_STACK_H:.0f}）"
+        f"  杜邦侧向 {DUPONT_SIDE_CLEAR} 线舱Z {WIRE_LOFT_Z}"
+    )
+    for name, length in a["cables"].items():
+        print(f"  线径 {name}: {length:.0f}mm / {CABLE_LEN:.0f}mm")
     print("AUDIT PASS")
 
 
