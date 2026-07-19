@@ -18,7 +18,7 @@ from pathlib import Path
 
 import cadquery as cq
 
-# 与 generate_case.py v7.4 保持一致
+# 与 generate_case.py v7.5 保持一致
 OUTER_L = 106.0
 OUTER_W = 140.0
 OUTER_H = 108.0
@@ -276,7 +276,7 @@ def main() -> None:
 
     readme = desk / "README.txt"
     readme.write_text(
-        "扫题挂件 — 打印外壳合盖后配件就位预览（v7.4）\n"
+        "扫题挂件 — 打印外壳合盖后配件就位预览（v7.5）\n"
         "\n"
         "文件说明：\n"
         "  saoti_packed_assembly.stl   推荐：半剖外壳 + 全部配件（能看清内部）\n"

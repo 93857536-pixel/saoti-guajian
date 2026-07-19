@@ -37,6 +37,7 @@ Display display;
 Camera camera;
 Modem modem;
 Button button;
+Button button2;
 StreamServer streamServer;
 UsbStream usbStream;
 Solver solver;
@@ -53,6 +54,7 @@ volatile bool gPendingWake = false;
 volatile bool gPendingThumb = false;
 volatile bool gPendingFlash = false;
 volatile bool gPendingFlashOn = false;
+volatile bool gTorchOn = false;  // 补光常亮时禁止外设休眠
 volatile bool gPipelineBusyFlag = false;
 
 void setState(AppState next) {
@@ -711,11 +713,11 @@ void printBootSummary() {
                 modem.isCellReady() ? "OK" : "FAIL",
                 modem.streamingIp().c_str());
   system_ready = display.isReady() && camera.isReady();
-  Serial.println("[APP] cmds: BOOT/s=scan  longBOOT/t=AI test  ?=status  NET=4G");
+  Serial.println("[APP] cmds: KEY1/s=scan  KEY2/longKEY1/t=AI test  ?=status  NET=4G");
   if (system_ready) {
-    Serial.println("[APP] ready — short BOOT to scan, long BOOT to test AI");
+    Serial.println("[APP] ready — KEY1 scan, KEY2 (or long KEY1) AI test");
   } else {
-    Serial.println("[APP] degraded — short/long BOOT use fixed-image AI test");
+    Serial.println("[APP] degraded — KEY1/KEY2 use fixed-image AI test");
   }
 }
 
@@ -875,12 +877,34 @@ void handleSerialLine(const String& line) {
       (void)camera.wake();
     }
     setOv5640Flash(true);
+    gTorchOn = true;
     Serial.println("{\"type\":\"flash\",\"on\":true}");
     return;
   }
   if (cmd == "FLASHOFF" || cmd == "flashoff") {
     setOv5640Flash(false);
+    gTorchOn = false;
     Serial.println("{\"type\":\"flash\",\"on\":false}");
+    return;
+  }
+  if (cmd == "FLASHDIAG" || cmd == "flashdiag") {
+    noteUiActivity();
+    if (camera.isSleeping()) {
+      (void)camera.wake();
+    }
+    sensor_t* sensor = esp_camera_sensor_get();
+    if (!sensor || !sensor->get_reg) {
+      Serial.println("{\"type\":\"flashdiag\",\"ok\":false}");
+      return;
+    }
+    Serial.printf(
+        "{\"type\":\"flashdiag\",\"ok\":true,\"r3004\":%d,\"r3016\":%d,"
+        "\"r3019\":%d,\"r301C\":%d,\"r3B00\":%d}\n",
+        sensor->get_reg(sensor, 0x3004, 0xFF),
+        sensor->get_reg(sensor, 0x3016, 0xFF),
+        sensor->get_reg(sensor, 0x3019, 0xFF),
+        sensor->get_reg(sensor, 0x301C, 0xFF),
+        sensor->get_reg(sensor, 0x3B00, 0xFF));
     return;
   }
 #endif
@@ -1048,6 +1072,7 @@ void setup() {
                 USE_MOCK_CAMERA, USE_MOCK_MODEM, USB_STREAM_SKIP_MODEM_ON_BOOT);
 
   button.begin(pins::BUTTON);
+  button2.begin(pins::BUTTON2);
   battery::begin();
   solverBegin();
   solverSetModem(&modem);
@@ -1138,6 +1163,7 @@ void setup() {
 
 void loop() {
   button.update();
+  button2.update();
   ble_gatt::loop();
 
   if (appConsumeWakeRequest()) {
@@ -1146,10 +1172,12 @@ void loop() {
   bool flashOn = false;
   if (appConsumeFlashRequest(&flashOn)) {
 #if !USE_MOCK_CAMERA
+    noteUiActivity();
     if (camera.isSleeping()) {
       (void)camera.wake();
     }
     setOv5640Flash(flashOn);
+    gTorchOn = flashOn;
 #endif
   }
   if (appConsumeThumbRequest() && !gPipelineBusyFlag) {
@@ -1174,13 +1202,15 @@ void loop() {
   }
 
   if (state == AppState::ShowResult) {
-    if (button.shortPressEdge() || button.longPressEdge()) {
+    if (button.shortPressEdge() || button.longPressEdge() || button2.shortPressEdge() ||
+        button2.longPressEdge()) {
       showIdle();
       setState(AppState::Idle);
     }
   } else if (state == AppState::Idle) {
-    if (button.longPressEdge()) {
-      Serial.println("[APP] long BOOT -> fixed-image AI test");
+    // KEY1/GPIO0：扫题；KEY2/GPIO42：固定题测 AI；KEY1 长按仍可测 AI
+    if (button2.shortPressEdge() || button.longPressEdge()) {
+      Serial.println("[APP] KEY2 / long KEY1 -> fixed-image AI test");
       runFixedImageSolvePipeline();
     } else if (button.shortPressEdge()) {
       triggerScanOrTest();
@@ -1291,9 +1321,9 @@ void loop() {
     }
   }
 
-  // 空闲：先关背光，再关摄像头/4G 射频；充电中/答案热点/USB 推流时不睡
+  // 空闲：先关背光，再关摄像头/4G 射频；充电中/补光常亮/答案热点/USB 推流时不睡
   if (state == AppState::Idle && error_until == 0 && !battery::isCharging() &&
-      !answer_ap::active()
+      !gTorchOn && !answer_ap::active()
 #if USB_STREAM_ENABLE
       && !usbStream.isActive()
 #endif

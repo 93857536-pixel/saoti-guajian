@@ -46,8 +46,11 @@ constexpr int MODEM_PEN = 48;     // → 模 PEN（使能，常高）
 constexpr int MODEM_RESET = -1;
 constexpr int MODEM_NET_STATUS = -1;
 
-// ── 按键（拍照） ──────────────────────────────────────────
+// ── 按键（2 位独立按键模块）──────────────────────────────
+// 模块常见丝印：GND + KEY1 + KEY2（按下拉低；ESP 内部上拉）
+// KEY1→GPIO0 扫题；KEY2→GPIO42 固定题测 AI；板载 BOOT 可并联 KEY1
 constexpr int BUTTON = 0;
+constexpr int BUTTON2 = 42;
 
 // ── 电池电压 ADC（需分压，见 WIRING.md）──────────────────
 // 电池+ → 100k → GPIO14 → 100k → GND（分压比 2）

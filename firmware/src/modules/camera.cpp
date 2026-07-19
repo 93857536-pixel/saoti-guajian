@@ -300,18 +300,34 @@ bool triggerOv5640Focus() { return false; }
 void setOv5640Flash(bool on) {
   sensor_t* sensor = esp_camera_sensor_get();
   if (!sensor || !sensor->set_reg) {
+    Serial.println("[CAM] flash: sensor not ready (wake camera first)");
     return;
   }
-  // 微雪 C：镜头两侧 LED 由传感器 STROBE 脚经 MOSFET 驱动
-  (void)sensor->set_reg(sensor, 0x3004, 0x08, 0x08);  // STROBE clock
-  (void)sensor->set_reg(sensor, 0x3016, 0x02, 0x02);  // STROBE pad OE
+  // 微雪 C 原理图：OV_STROBE → 10k → SI2302 栅极，高电平点亮两侧 LED。
+  // 默认 0x3016 STROBE pad 为输入，只写 0x3B00 往往灯不亮。
+  // 做法：打开 STROBE 时钟 + pad 输出，并用寄存器强制驱动电平（torch）。
+  (void)sensor->set_reg(sensor, 0x3004, 0x08, 0x08);  // bit3: STROBE clock
+  (void)sensor->set_reg(sensor, 0x3016, 0x02, 0x02);  // bit1: STROBE pad OE
+  // bit1=1：STROBE 由 0x3019[1] 寄存器值驱动（比 strobe 控制器更稳）
+  (void)sensor->set_reg(sensor, 0x301C, 0x02, 0x02);
   if (on) {
-    // LED3 持续点亮，直到清除 request 位
+    (void)sensor->set_reg(sensor, 0x3019, 0x02, 0x02);  // STROBE pad = 1
+    // 同步开 LED3 控制器（部分模组只认这一路）
     (void)sensor->set_reg(sensor, 0x3B00, 0xFF, 0x83);
   } else {
+    (void)sensor->set_reg(sensor, 0x3019, 0x02, 0x00);  // STROBE pad = 0
     (void)sensor->set_reg(sensor, 0x3B00, 0xFF, 0x03);
   }
-  Serial.printf("[CAM] flash %s\n", on ? "ON" : "OFF");
+  int r3004 = sensor->get_reg ? sensor->get_reg(sensor, 0x3004, 0xFF) : -1;
+  int r3016 = sensor->get_reg ? sensor->get_reg(sensor, 0x3016, 0xFF) : -1;
+  int r3019 = sensor->get_reg ? sensor->get_reg(sensor, 0x3019, 0xFF) : -1;
+  int r301C = sensor->get_reg ? sensor->get_reg(sensor, 0x301C, 0xFF) : -1;
+  int r3B00 = sensor->get_reg ? sensor->get_reg(sensor, 0x3B00, 0xFF) : -1;
+  Serial.printf(
+      "[CAM] flash %s regs 3004=0x%02X 3016=0x%02X 3019=0x%02X 301C=0x%02X "
+      "3B00=0x%02X\n",
+      on ? "ON" : "OFF", r3004 & 0xFF, r3016 & 0xFF, r3019 & 0xFF,
+      r301C & 0xFF, r3B00 & 0xFF);
 }
 
 namespace {

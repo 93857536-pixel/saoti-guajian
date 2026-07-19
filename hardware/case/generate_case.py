@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-扫题挂件外壳 v7.4 — 外接 6×6 拍照键 + v7.3 净高/线长
+扫题挂件外壳 v7.5 — 2 位独立按键模块开孔
 
-v7.3：后仓净高≥70mm、20cm 杜邦审计。
-v7.4：BOM 轻触开关 6×6 — 左侧壁 Ø12 指孔 + 内凹座（右侧留给 ESP USB）。
+v7.3：后仓净高≥70mm、20cm 杜邦。
+v7.4：曾按单颗 6×6 开孔（已废弃）。
+v7.5：天猫常见「2位独立按键模块」整板嵌入左壁（双键窗 + PCB 凹座）。
 
 摆法：
   - 电源贴底，USB-C 出后壳底边
   - ESP 靠右，USB-C 出后壳右侧壁
-  - BOOT 后壳对准 ESP（烧录/备用）；外接键在左壁
+  - BOOT 后壳对准 ESP；双键模块在左壁
   - 4G 左上；屏/摄在前壳
 
 用法:
@@ -117,13 +118,16 @@ STRAP_D = 6.0
 ANT_PAD_W, ANT_PAD_H, ANT_PAD_D = 50.0, 15.0, 0.9
 ANT_PAD_CX, ANT_PAD_CY = 0.0, LCD_CY
 
-# ---------- 外接轻触开关 6×6×5（BOM；GPIO0↔GND）----------
-# 右侧壁给 ESP USB，按键开在后壳左侧壁；Ø12 兼容指按/小键帽
-BTN_BODY = 6.0
-BTN_TRAVEL_H = 5.0  # 开关本体高度（含行程大致占位）
-BTN_HOLE_D = 12.0
-BTN_CY = 18.0  # 左壁 Y：避开底电源与顶天线
-BTN_Z_B = 20.0  # 后壳局部 Z（从外后脸量，约后仓中部）
+# ---------- 2 位独立按键模块（天猫电子积木常见款，非单颗 6×6）----------
+# 参考实物：双大方键并排 + 一端 2.54 排针；PCB 约 32～40 × 18～22
+# 口袋/孔一律偏松，兼容不同店家板子
+BTN_MOD_L = 42.0  # 沿双键方向（Y）口袋
+BTN_MOD_W = 24.0  # 沿板宽方向（后壳局部 Z）口袋
+BTN_MOD_T = 14.0  # 板+键帽向仓内占位
+BTN_PITCH = 15.5  # 两键中心距（常见 14～16）
+BTN_CAP = 12.0  # 单键露出方孔边长
+BTN_CY = 18.0  # 模块中心 Y（左壁）
+BTN_Z_B = 22.0  # 模块中心局部 Z（从外后脸）
 
 
 def rounded_box(l: float, w: float, h: float, r: float) -> cq.Workplane:
@@ -444,20 +448,21 @@ def shell_back() -> cq.Workplane:
         .extrude(WALL + 1.2)
     )
 
-    # 外接 6×6 轻触开关：左侧壁 Ø12 指孔 + 内侧方凹座
-    body = body.cut(
-        cq.Workplane("YZ")
-        .workplane(offset=-OUTER_L / 2 + 0.05)
-        .center(BTN_CY, BTN_Z_B)
-        .circle(BTN_HOLE_D / 2 + TOL / 2)
-        .extrude(WALL + 5)
-    )
+    # 2 位独立按键模块：左壁双键方窗 + 内侧整板凹座
+    for dy in (-BTN_PITCH / 2, BTN_PITCH / 2):
+        body = body.cut(
+            cq.Workplane("YZ")
+            .workplane(offset=-OUTER_L / 2 + 0.05)
+            .center(BTN_CY + dy, BTN_Z_B)
+            .rect(BTN_CAP + TOL, BTN_CAP + TOL)
+            .extrude(WALL + 5)
+        )
     body = body.cut(
         cq.Workplane("YZ")
         .workplane(offset=-OUTER_L / 2 + WALL - 0.15)
         .center(BTN_CY, BTN_Z_B)
-        .rect(BTN_BODY + POCKET, BTN_BODY + POCKET)
-        .extrude(BTN_TRAVEL_H + 3.0)
+        .rect(BTN_MOD_L, BTN_MOD_W)
+        .extrude(BTN_MOD_T)
     )
 
     # 开关指拨槽（后壳背面，对准电源 +Y 边；加长兼容偏位）
@@ -562,15 +567,15 @@ def audit() -> dict:
     if not (esp_x0 <= BOOT_CX <= esp_x1 and esp_lo <= BOOT_CY <= esp_hi):
         issues.append("BOOT 孔不在 ESP 板范围内")
 
-    # 外接键：左壁、后仓高度内，勿撞电源底边
-    if not (0.0 < BTN_Z_B < (OUTER_H - SPLIT_Z - WALL)):
-        issues.append("外接键 Z 超出后壳")
-    if BTN_CY < pwr_hi + 8:
-        issues.append("外接键 Y 太靠近电源区")
-    if abs(BTN_CY - MODEM_CY) < (MODEM_H / 2 + 8) and MODEM_CX < -10:
-        # 同在左侧区域时留空，避免与 4G 胶壳打架
-        if abs(BTN_CY - MODEM_CY) < 10:
-            issues.append("外接键 Y 与 4G 过近")
+    # 双键模块：左壁、后仓高度内，勿撞电源底边
+    btn_y0, btn_y1 = BTN_CY - BTN_MOD_L / 2, BTN_CY + BTN_MOD_L / 2
+    btn_z0, btn_z1 = BTN_Z_B - BTN_MOD_W / 2, BTN_Z_B + BTN_MOD_W / 2
+    if btn_z0 < 1.0 or btn_z1 > (OUTER_H - SPLIT_Z - WALL - 1.0):
+        issues.append("双键模块 Z 超出后壳")
+    if btn_y0 < pwr_hi + 6:
+        issues.append("双键模块 Y 太靠近电源区")
+    if abs(BTN_CY - MODEM_CY) < 12:
+        issues.append("双键模块 Y 与 4G 过近")
 
     # 4G 与 ESP 本体
     if _overlap(mod_x0, mod_x1, esp_x0, esp_x1) > 1 and _overlap(mod_y0, mod_y1, esp_lo, esp_hi) > 1:
@@ -666,15 +671,15 @@ def main() -> None:
     cq.exporters.export(back, str(out / "saoti_back.stl"))
     cq.exporters.export(preview, str(out / "saoti_assembled_preview.stl"))
 
-    print("OK v7.4 ->", out)
+    print("OK v7.5 ->", out)
     print(f"  外廓 {OUTER_L}×{OUTER_W}×{OUTER_H}  前{SPLIT_Z}/后{OUTER_H - SPLIT_Z}")
     print(f"  容错 TOL={TOL} POCKET={POCKET} WALL_GAP={WALL_GAP} HOOK={HOOK}")
     print(f"  LCD-CAM缝 {a['gap_lcd_cam']:.1f}  ESP-PWR缝 {a['gap_esp_pwr']:.1f}")
     print(f"  电源→底内壁 {a['pwr_to_bottom']:.1f}mm  ESP→右内壁 {a['esp_to_right']:.1f}mm")
     print(f"  BOOT 腰圆 @ ({BOOT_CX:.1f},{BOOT_CY:.1f}) 后壳  ESP USB→右侧壁")
     print(
-        f"  外接键 6×6 @ 左壁 Y={BTN_CY:.1f} Z={BTN_Z_B:.1f}"
-        f"  指孔Ø{BTN_HOLE_D:.0f} 内凹{BTN_BODY + POCKET:.1f}方"
+        f"  双键模块 @ 左壁 Y={BTN_CY:.1f} Z={BTN_Z_B:.1f}"
+        f"  口袋{BTN_MOD_L:.0f}×{BTN_MOD_W:.0f} 键距{BTN_PITCH} 方孔{BTN_CAP:.0f}"
     )
     print(f"  摄像板 {CAM_BOARD_W}×{CAM_BOARD_H} 矩形；镜头孔偏 ({a['lens'][0]:.1f},{a['lens'][1]:.1f})")
     print(f"  开关槽 @ ({a['switch'][0]:.1f},{a['switch'][1]:.1f}) 后壳背面 尺寸{SW_SLOT_W}×{SW_SLOT_H}")
