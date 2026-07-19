@@ -225,10 +225,15 @@ bool wakePeripherals(const char* reason) {
   noteUiActivity();
   const bool needCam = camera.isSleeping();
   const bool needModem = modem.radioSleeping();
-  // 外设已醒时仍做蓝牙自检（保证可被 App 搜到）
+  // 外设已醒：已连接则不要重广播（会弄断 iPhone）；未连接再自检广播
   if (!needCam && !needModem) {
     display.setBacklight(true);
     Serial.printf("[PWR] light selfcheck ble (%s)\n", reason ? reason : "?");
+#if BLE_GATT_ENABLE
+    if (ble_gatt::isConnected()) {
+      return true;
+    }
+#endif
     return runBleSelfCheck(showWakeSelfCheck, 3);
   }
   Serial.printf("[PWR] wake+selfcheck (%s)...\n", reason ? reason : "?");
@@ -269,10 +274,17 @@ bool wakePeripherals(const char* reason) {
     delay(600);
   }
 
-  // 3) 蓝牙（休眠不关 BLE，但要确认仍在广播；屏上显示可搜名字）
-  if (!runBleSelfCheck(showWakeSelfCheck, 3)) {
+  // 3) 蓝牙：已连接则跳过重广播（否则 iPhone 会断链）
+#if BLE_GATT_ENABLE
+  if (ble_gatt::isConnected()) {
+    showWakeSelfCheck(3, "蓝牙已连接");
+    delay(150);
+  } else if (!runBleSelfCheck(showWakeSelfCheck, 3)) {
     ok = false;
   }
+#else
+  showWakeSelfCheck(3, "蓝牙未编译");
+#endif
 
   // 4) 4G 射频
   showWakeSelfCheck(4, needModem ? "正在打开 4G 射频…" : "4G 已就绪");
@@ -306,7 +318,7 @@ bool wakePeripherals(const char* reason) {
     delay(600);
   }
   refreshNetBadge();
-  // 4G 操作后可能碰射频，再踢一次 BLE 广播
+  // 仅未连接时重广播（connected 时 restartAdvertising 会直接跳过）
   ble_gatt::restartAdvertising();
 
   // 6) 电池
@@ -871,6 +883,22 @@ void handleSerialLine(const String& line) {
     return;
   }
 #if !USE_MOCK_CAMERA
+  if (cmd == "CAMFLIP" || cmd == "camflip") {
+    noteUiActivity();
+    if (camera.isSleeping()) {
+      (void)camera.wake();
+    }
+    toggleCamVflip();
+    return;
+  }
+  if (cmd == "CAMMIRROR" || cmd == "cammirror") {
+    noteUiActivity();
+    if (camera.isSleeping()) {
+      (void)camera.wake();
+    }
+    toggleCamHmirror();
+    return;
+  }
   if (cmd == "FLASHON" || cmd == "flashon") {
     noteUiActivity();
     if (camera.isSleeping()) {
@@ -1173,31 +1201,56 @@ void loop() {
   if (appConsumeFlashRequest(&flashOn)) {
 #if !USE_MOCK_CAMERA
     noteUiActivity();
-    if (camera.isSleeping()) {
+    // 只醒摄像头，勿走完整 wakePeripherals（会踢 4G/重广播，弄断手机 BLE）
+    if (camera.isSleeping() || !camera.isReady()) {
       (void)camera.wake();
     }
     setOv5640Flash(flashOn);
     gTorchOn = flashOn;
+    char ack[72];
+    snprintf(ack, sizeof(ack),
+             "{\"type\":\"flash\",\"on\":%s,\"cam\":%s}",
+             flashOn ? "true" : "false",
+             camera.isReady() ? "true" : "false");
+    ble_gatt::notifyEventJson(ack);
+#else
+    (void)flashOn;
 #endif
   }
   if (appConsumeThumbRequest() && !gPipelineBusyFlag) {
-    if (camera.isSleeping()) {
-      (void)wakePeripherals("ble-thumb");
+    noteUiActivity();
+    // 取景同样只醒摄像头，避免 4G 自检卡住主循环
+    if (camera.isSleeping() || !camera.isReady()) {
+      if (!camera.wake()) {
+        ble_gatt::notifyEventJson(
+            "{\"type\":\"thumb\",\"ok\":false,\"reason\":\"wake_fail\"}");
+      }
     }
 #if USB_STREAM_ENABLE
     usbStream.setActive(false);
+    delay(30);
 #endif
 #if !USE_MOCK_CAMERA
     camera.setStreamingPaused(true);
 #endif
-    const CaptureResult thumb = camera.captureThumbnail();
+    CaptureResult thumb;
+    if (camera.isReady()) {
+      thumb = camera.captureThumbnail();
+    } else {
+      thumb.error = "camera not ready";
+    }
 #if !USE_MOCK_CAMERA
     camera.setStreamingPaused(false);
 #endif
     if (thumb.ok) {
       ble_gatt::sendThumbJpeg(thumb.jpeg.data(), thumb.jpeg.size());
+      ble_gatt::notifyEventJson("{\"type\":\"thumb\",\"ok\":true}");
     } else {
-      ble_gatt::notifyEventJson("{\"type\":\"thumb\",\"ok\":false}");
+      char err[96];
+      snprintf(err, sizeof(err),
+               "{\"type\":\"thumb\",\"ok\":false,\"reason\":\"%s\"}",
+               thumb.error ? thumb.error : "capture");
+      ble_gatt::notifyEventJson(err);
     }
   }
 

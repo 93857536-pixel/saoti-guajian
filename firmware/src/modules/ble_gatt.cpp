@@ -103,8 +103,11 @@ void startAdvInternal() {
     return;
   }
   BLEAdvertising* adv = BLEDevice::getAdvertising();
-  adv->stop();
-  delay(30);
+  // 已连接时 stop() 会弄断 iPhone/部分安卓链路 → App 点补光/取景「没反应」
+  if (!gConnected) {
+    adv->stop();
+    delay(30);
+  }
 
   // 31B 限制：ADV 只放 Flags+完整名，让安卓「设置→蓝牙」尽量能扫到名字；
   // Scan Response 放 Service UUID + 厂商魔数（App / iOS 主动扫描可读）。
@@ -305,7 +308,11 @@ void restartAdvertising() {
     return;
   }
   WiFi.mode(WIFI_OFF);
-  // 即使已连接也刷新广播，保证可被重新发现
+  if (gConnected) {
+    // 保持当前连接，只确保未连接时可被搜到
+    Serial.println("[BLE] skip adv restart (connected)");
+    return;
+  }
   startAdvInternal();
 }
 

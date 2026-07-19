@@ -156,7 +156,7 @@
 #endif
 // frame2jpg 质量 1–100，越高越清晰（与 OV5640 硬件 jpeg_quality 刻度相反）
 #ifndef CLOUD_SAFE_JPG_QUALITY
-#define CLOUD_SAFE_JPG_QUALITY 88
+#define CLOUD_SAFE_JPG_QUALITY 92
 #endif
 // 近黑/空图拒绝：体积小且熵低才丢；高熵小图（文字多、压得好）仍放行
 #ifndef CLOUD_SAFE_MIN_JPEG
@@ -174,12 +174,20 @@
 #endif
 
 // 扫题捕获分辨率：1=优先 HVGA(480x320)，失败回退 QVGA（VGA 在本板易卡死）
-// 智谱对 OV5640 硬件 JPEG 兼容性差；默认 QVGA 软重编码，可开 HVGA 提字迹
+// 智谱对 OV5640 硬件 JPEG 兼容性差 → cloud-safe 软编码；HVGA 提升字迹
 #ifndef CAPTURE_USE_HVGA
-#define CAPTURE_USE_HVGA 0
+#define CAPTURE_USE_HVGA 1
 #endif
 #ifndef CLOUD_SAFE_USE_HVGA
 #define CLOUD_SAFE_USE_HVGA 1
+#endif
+// 装机朝向：镜头朝外壳正面外；微雪 C 型在 ESP32-S3 上常见需垂直翻转才「正前方朝上」
+// 若画面仍反了，串口发 CAMFLIP / CAMMIRROR 切换，或改下面默认值重编
+#ifndef CAM_VFLIP
+#define CAM_VFLIP 1
+#endif
+#ifndef CAM_HMIRROR
+#define CAM_HMIRROR 0
 #endif
 
 // 拍照前 OV5640 自动对焦（需模组 AF-VCC 接 3.3V，微雪 C 型通常已接）

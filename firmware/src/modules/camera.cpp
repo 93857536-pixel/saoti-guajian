@@ -183,11 +183,27 @@ void setOv5640Colorbar(bool enable) {
   Serial.printf("[CAM] colorbar %s\n", enable ? "ON" : "OFF");
 }
 
+static int gCamVflip = CAM_VFLIP;
+static int gCamHmirror = CAM_HMIRROR;
+
+void applyOv5640Orientation(sensor_t* sensor) {
+  if (!sensor) {
+    return;
+  }
+  if (sensor->set_vflip) {
+    sensor->set_vflip(sensor, gCamVflip ? 1 : 0);
+  }
+  if (sensor->set_hmirror) {
+    sensor->set_hmirror(sensor, gCamHmirror ? 1 : 0);
+  }
+}
+
 void applyOv5640StreamTuning() {
   sensor_t* sensor = esp_camera_sensor_get();
   if (!sensor) {
     return;
   }
+  applyOv5640Orientation(sensor);
 
 #if USB_STREAM_COLORBAR_TEST
   setOv5640Colorbar(true);
@@ -222,6 +238,7 @@ void applyOv5640CaptureTuning() {
   if (!sensor) {
     return;
   }
+  applyOv5640Orientation(sensor);
   // 扫题向：更清晰的文字边缘；增益适中减轻噪点「假糊」
   sensor->set_brightness(sensor, 1);
   sensor->set_contrast(sensor, 2);
@@ -250,6 +267,18 @@ void applyOv5640CaptureTuning() {
   if (sensor->set_quality) {
     sensor->set_quality(sensor, CAPTURE_JPEG_QUALITY);
   }
+}
+
+void toggleCamVflip() {
+  gCamVflip = gCamVflip ? 0 : 1;
+  applyOv5640StreamTuning();
+  Serial.printf("[CAM] vflip=%d hmirror=%d\n", gCamVflip, gCamHmirror);
+}
+
+void toggleCamHmirror() {
+  gCamHmirror = gCamHmirror ? 0 : 1;
+  applyOv5640StreamTuning();
+  Serial.printf("[CAM] vflip=%d hmirror=%d\n", gCamVflip, gCamHmirror);
 }
 
 #if CAM_AUTO_FOCUS
@@ -636,6 +665,8 @@ CaptureResult Camera::captureThumbnail() {
 #if USE_MOCK_CAMERA
   return captureMock();
 #else
+  // BLE 取景：QVGA + 较好硬件 JPEG（勿用 QQVGA/q=28，放大后像马赛克）
+  // OV5640 set_quality：数值越小越清晰
   CaptureResult r;
   if (!ready_) {
     r.error = "camera not ready";
@@ -647,13 +678,13 @@ CaptureResult Camera::captureThumbnail() {
     prev = static_cast<framesize_t>(sensor->status.framesize);
   }
   if (sensor && sensor->set_framesize) {
-    (void)sensor->set_framesize(sensor, FRAMESIZE_QQVGA);
+    (void)sensor->set_framesize(sensor, FRAMESIZE_QVGA);
   }
   if (sensor && sensor->set_quality) {
-    sensor->set_quality(sensor, 28);
+    sensor->set_quality(sensor, 12);
   }
-  delay(200);
-  flushFrames(1, pdMS_TO_TICKS(80));
+  delay(220);
+  flushFrames(2, pdMS_TO_TICKS(100));
   camera_fb_t* fb = grabFrameWithRetry(3);
   if (!fb) {
     if (sensor && sensor->set_framesize) {
@@ -662,19 +693,31 @@ CaptureResult Camera::captureThumbnail() {
     r.error = "thumb fb_get failed";
     return r;
   }
-  if (fb->format == PIXFORMAT_JPEG && fb->len >= 400) {
+  // 控制 BLE 体积：过大则略降质量再抓一帧
+  if (fb->format == PIXFORMAT_JPEG && fb->len >= 800) {
+    if (fb->len > 14000 && sensor && sensor->set_quality) {
+      releaseFramebuffer(fb);
+      sensor->set_quality(sensor, 16);
+      delay(120);
+      flushFrames(1, pdMS_TO_TICKS(80));
+      fb = grabFrameWithRetry(2);
+    }
+  }
+  if (fb && fb->format == PIXFORMAT_JPEG && fb->len >= 800) {
     r.jpeg.assign(fb->buf, fb->buf + fb->len);
     r.ok = true;
     r.bytes = r.jpeg.size();
   } else {
     r.error = "thumb not jpeg";
   }
-  releaseFramebuffer(fb);
+  if (fb) {
+    releaseFramebuffer(fb);
+  }
   if (sensor && sensor->set_framesize) {
     (void)sensor->set_framesize(sensor, prev);
   }
   applyOv5640StreamTuning();
-  Serial.printf("[CAM] thumb %s %u bytes\n", r.ok ? "OK" : "FAIL",
+  Serial.printf("[CAM] thumb %s %u bytes (QVGA)\n", r.ok ? "OK" : "FAIL",
                 static_cast<unsigned>(r.bytes));
   return r;
 #endif

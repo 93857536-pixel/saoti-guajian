@@ -103,10 +103,11 @@ CAM_BOARD_W, CAM_BOARD_H = 35.7, 23.9
 CAM_CX, CAM_CY = 0.0, 0.0  # was 8：随屏下移，保持 ≥16mm 缝
 CAM_POCKET_W = CAM_BOARD_W + POCKET + 1.2  # ≈每边再松 ~0.6+
 CAM_POCKET_H = CAM_BOARD_H + POCKET + 0.8
-CAM_LENS_DX = 8.5
+# 微雪 C：镜头模组偏排针对侧，但不宜偏太狠——孔偏了会像「斜着拍」
+CAM_LENS_DX = 5.0  # was 8.5：往板心收，兼容装反/公差
 CAM_LENS_DY = 0.0
-CAM_D = 9.5  # 镜头圆孔略大，防磨边
-CAM_SQ = 12.5  # 方形模组凹槽（含 TOL 后更松）
+CAM_D = 14.0  # 加大通光孔，避免壁厚挡光轴
+CAM_SQ = 16.0  # 方形模组凹槽（含闪光灯壳体余量）
 
 # 4G：左上，避开 ESP（右侧）与电源
 MODEM_W, MODEM_H = 28.0, 26.0

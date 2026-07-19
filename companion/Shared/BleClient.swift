@@ -146,12 +146,15 @@ final class BleClient: NSObject, ObservableObject {
     }
 
     func sendCommand(_ cmd: String) {
-        guard let p = peripheral, let c = cmdChar,
+        guard state == .ready, let p = peripheral, let c = cmdChar,
               let data = cmd.data(using: .utf8) else {
-            log("命令失败：未就绪")
+            log("命令失败：未就绪（请回设备页重连）")
             return
         }
-        p.writeValue(data, for: c, type: .withResponse)
+        // WRITE_NR：iPhone 上比 withResponse 更不容易卡死无回执
+        let writeType: CBCharacteristicWriteType =
+            c.properties.contains(.writeWithoutResponse) ? .withoutResponse : .withResponse
+        p.writeValue(data, for: c, type: writeType)
         log("> \(cmd)")
     }
 

@@ -142,6 +142,7 @@ struct CompanionDashboard: View {
                 Button("刷新状态") { ble.sendCommand("status") }
                     .buttonStyle(.bordered)
             }
+            .disabled(ble.state != .ready)
         }
     }
 
@@ -196,6 +197,16 @@ struct CompanionPreviewView: View {
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxHeight: .infinity)
+                }
+                Text("此为 BLE 预览（约 320×240），不是扫题原图。要更清晰请用 Mac 上 SaotiCam USB 推流，或直接按键扫题。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                if ble.state != .ready {
+                    Text("未连接挂件：请到「设备」页扫描连接 Saoti-XXXX")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
                 }
                 Button("刷新取景") { ble.requestThumb() }
                     .buttonStyle(.borderedProminent)

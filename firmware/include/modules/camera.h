@@ -19,6 +19,8 @@ struct CaptureResult {
 #if !USE_MOCK_CAMERA
 void applyOv5640StreamTuning();
 void applyOv5640CaptureTuning();
+void toggleCamVflip();
+void toggleCamHmirror();
 void setOv5640Colorbar(bool enable);
 void setOv5640Flash(bool on);
 bool ensureOv5640Autofocus();
@@ -31,7 +33,7 @@ class Camera {
   bool begin();
   bool isReady() const { return ready_; }
   CaptureResult capture();
-  // BLE 取景：QQVGA 小图，不走 AI 流水线
+  // BLE 取景：QVGA 预览，不走 AI 流水线
   CaptureResult captureThumbnail();
   // 省电：deinit 摄像头；扫题前 wake()
   void sleep();
