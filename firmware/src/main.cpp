@@ -1,6 +1,8 @@
 #include "config.h"
 #include "pins.h"
 #include "app_control.h"
+
+#include <vector>
 #include "modules/answer_ap.h"
 #include "modules/battery.h"
 #include "modules/button.h"
@@ -518,52 +520,42 @@ void runFixedImageSolvePipeline() {
   setState(AppState::Uploading);
   showScanStep(2, "测试模式：正在拍照");
 
-  // 纯 4G：内置测试图过大，改用实时拍照（更贴近真实扫题）
-#if NET_CELL_ONLY || !USE_WIFI_FALLBACK
-  Serial.println("[AI] cell-only: test via live camera capture");
-  if (!camera.isReady()) {
-    showErrorHold("camera offline");
-#if USB_STREAM_ENABLE
-    if (resumeUsb) {
-      usbStream.setActive(true);
-    }
-#endif
-    return;
-  }
+  // 优先实时拍照；若近黑/过小则回退内置测题图（保证 AI 链路可验）
+  const uint8_t* jpegPtr = nullptr;
+  size_t jpegLen = 0;
+  std::vector<uint8_t> liveJpeg;
 #if !USE_MOCK_CAMERA
-  camera.setStreamingPaused(true);
-#endif
-  delay(200);
-  const CaptureResult cap = camera.capture();
-  ble_gatt::restartAdvertising();
-#if !USE_MOCK_CAMERA
-  camera.setStreamingPaused(false);
-#endif
-  if (!cap.ok) {
-    showErrorHold(cap.error ? cap.error : "capture failed");
-#if USB_STREAM_ENABLE
-    if (resumeUsb) {
-      usbStream.setActive(true);
+  if (camera.isReady()) {
+    Serial.println("[AI] test: try live camera capture");
+    camera.setStreamingPaused(true);
+    delay(200);
+    const CaptureResult cap = camera.capture();
+    ble_gatt::restartAdvertising();
+    camera.setStreamingPaused(false);
+    if (cap.ok && cap.jpeg.size() >= CLOUD_SAFE_MIN_JPEG) {
+      liveJpeg = cap.jpeg;
+      jpegPtr = liveJpeg.data();
+      jpegLen = liveJpeg.size();
+      Serial.printf("[AI] live test jpeg %u bytes\n",
+                    static_cast<unsigned>(jpegLen));
+    } else {
+      Serial.printf("[AI] live capture weak (%s len=%u) — use fixed test jpg\n",
+                    cap.ok ? "ok" : (cap.error ? cap.error : "fail"),
+                    static_cast<unsigned>(cap.ok ? cap.jpeg.size() : 0));
     }
-#endif
-    return;
   }
-  Serial.printf("[AI] live test jpeg %u bytes\n",
-                static_cast<unsigned>(cap.jpeg.size()));
+#endif
+  if (!jpegPtr) {
+    jpegPtr = kTestQuestionJpeg;
+    jpegLen = kTestQuestionJpegLen;
+    Serial.printf("[AI] fixed-image test (%u bytes jpeg)\n",
+                  static_cast<unsigned>(jpegLen));
+  }
   showScanStep(3, "检查测试图片");
   showScanStep(4, "连接网络");
   showScanStep(5, "上传测试题");
   showScanStep(6, "AI 解答中…");
-  const SolveResult solved = solver.solveJpeg(cap.jpeg.data(), cap.jpeg.size());
-#else
-  Serial.printf("[AI] fixed-image test (%u bytes jpeg)\n",
-                static_cast<unsigned>(kTestQuestionJpegLen));
-  showScanStep(4, "连接网络");
-  showScanStep(5, "上传测试题");
-  showScanStep(6, "AI 解答中…");
-  const SolveResult solved =
-      solver.solveJpeg(kTestQuestionJpeg, kTestQuestionJpegLen);
-#endif
+  const SolveResult solved = solver.solveJpeg(jpegPtr, jpegLen);
   if (!solved.ok) {
     Serial.printf("[AI] fixed-image FAIL: %s\n",
                   solved.error ? solved.error : "?");

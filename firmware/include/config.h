@@ -150,15 +150,36 @@
 #endif
 #define FRAME_WIDTH 640
 #define FRAME_HEIGHT 480
-// ESP-TLS 分片发送，可放宽；约 28KB JPEG 利于 OCR 文字边缘
+// ESP-TLS 分片发送；放宽以便 cloud-safe 高质量软编码
 #ifndef CELL_AI_MAX_JPEG
-#define CELL_AI_MAX_JPEG 28000
+#define CELL_AI_MAX_JPEG 48000
+#endif
+// frame2jpg 质量 1–100，越高越清晰（与 OV5640 硬件 jpeg_quality 刻度相反）
+#ifndef CLOUD_SAFE_JPG_QUALITY
+#define CLOUD_SAFE_JPG_QUALITY 88
+#endif
+// 近黑/空图拒绝：体积小且熵低才丢；高熵小图（文字多、压得好）仍放行
+#ifndef CLOUD_SAFE_MIN_JPEG
+#define CLOUD_SAFE_MIN_JPEG 4000
+#endif
+#ifndef CLOUD_SAFE_MIN_DIVERSITY
+#define CLOUD_SAFE_MIN_DIVERSITY 48
+#endif
+// 熵很高时允许略小体积（避免误拒清晰但压缩得好的帧）
+#ifndef CLOUD_SAFE_RICH_DIVERSITY
+#define CLOUD_SAFE_RICH_DIVERSITY 100
+#endif
+#ifndef CLOUD_SAFE_RICH_MIN_JPEG
+#define CLOUD_SAFE_RICH_MIN_JPEG 3200
 #endif
 
 // 扫题捕获分辨率：1=优先 HVGA(480x320)，失败回退 QVGA（VGA 在本板易卡死）
-// 智谱对 OV5640 硬件 JPEG 兼容性差；QVGA + 软重编码更稳（HVGA 软解易卡）
+// 智谱对 OV5640 硬件 JPEG 兼容性差；默认 QVGA 软重编码，可开 HVGA 提字迹
 #ifndef CAPTURE_USE_HVGA
 #define CAPTURE_USE_HVGA 0
+#endif
+#ifndef CLOUD_SAFE_USE_HVGA
+#define CLOUD_SAFE_USE_HVGA 1
 #endif
 
 // 拍照前 OV5640 自动对焦（需模组 AF-VCC 接 3.3V，微雪 C 型通常已接）

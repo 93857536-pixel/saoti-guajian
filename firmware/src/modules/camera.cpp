@@ -1067,7 +1067,7 @@ bool Camera::probeFrame() {
 // 智谱拒 OV5640 硬件 JPEG → 临时切 YUV/RGB 再 frame2jpg 生成标准基线 JPEG
 bool captureCloudSafeJpeg(std::vector<uint8_t>& out) {
   out.clear();
-  Serial.println("[CAM] cloud-safe: YUV422/RGB565 → JPEG");
+  Serial.println("[CAM] cloud-safe: YUV422/RGB565 → JPEG (hi-q soft encode)");
 #if CAM_AUTO_FOCUS
   gAfFwLoaded = false;
 #endif
@@ -1076,11 +1076,12 @@ bool captureCloudSafeJpeg(std::vector<uint8_t>& out) {
   Wire.end();
   delay(80);
 
-  auto tryFormat = [&](pixformat_t pf, const char* tag) -> bool {
+  auto tryFormat = [&](pixformat_t pf, framesize_t fsz, bool forceFlash,
+                       const char* tag) -> bool {
     camera_config_t cfg = buildCameraConfig();
-    cfg.frame_size = FRAMESIZE_QVGA;
+    cfg.frame_size = fsz;
     cfg.pixel_format = pf;
-    cfg.fb_count = (pf == PIXFORMAT_JPEG) ? 2 : 1;
+    cfg.fb_count = 1;
     cfg.grab_mode = CAMERA_GRAB_LATEST;
     cfg.fb_location = CAMERA_FB_IN_PSRAM;
     const esp_err_t err = esp_camera_init(&cfg);
@@ -1092,32 +1093,69 @@ bool captureCloudSafeJpeg(std::vector<uint8_t>& out) {
       return false;
     }
     applyOv5640CaptureTuning();
-    delay(350);
-    for (int i = 0; i < 2; ++i) {
+    // 给 AEC/AWB 更多时间，避免近黑帧
+    delay(450);
+    for (int i = 0; i < 4; ++i) {
       camera_fb_t* warm = esp_camera_fb_get();
       if (warm) {
         esp_camera_fb_return(warm);
       }
     }
+    bool flashOn = false;
+#if CAM_AUTO_FLASH
+    if (forceFlash || sceneNeedsFlash()) {
+      setOv5640Flash(true);
+      flashOn = true;
+      sensor_t* s = esp_camera_sensor_get();
+      if (s && s->set_agc_gain) {
+        s->set_agc_gain(s, 4);
+      }
+      delay(400);
+      for (int i = 0; i < 2; ++i) {
+        camera_fb_t* warm = esp_camera_fb_get();
+        if (warm) {
+          esp_camera_fb_return(warm);
+        }
+      }
+    }
+#endif
 #if CAM_AUTO_FOCUS
     (void)triggerOv5640Focus();
-    delay(200);
+    delay(280);
 #endif
     camera_fb_t* fb = esp_camera_fb_get();
     if (!fb) {
       Serial.printf("[CAM] cloud-safe %s fb_get fail\n", tag);
+      if (flashOn) {
+        setOv5640Flash(false);
+      }
       esp_camera_deinit();
       delay(100);
       return false;
     }
     uint8_t* jpg = nullptr;
     size_t jpg_len = 0;
-    const bool ok =
-        frame2jpg(fb, 12, &jpg, &jpg_len) && jpg && jpg_len >= 800 &&
-        jpg_len <= CELL_AI_MAX_JPEG;
-    Serial.printf("[CAM] cloud-safe %s frame %ux%u fmt=%d → jpg %u ok=%d\n",
-                  tag, fb->width, fb->height, static_cast<int>(fb->format),
-                  static_cast<unsigned>(jpg_len), ok ? 1 : 0);
+    // frame2jpg：quality 1–100，越高越清晰（先前误用 12 → 文件极小、文字糊）
+    const bool encoded =
+        frame2jpg(fb, CLOUD_SAFE_JPG_QUALITY, &jpg, &jpg_len) && jpg &&
+        jpg_len > 0;
+    const uint32_t div =
+        (encoded && jpg) ? jpegByteDiversity(jpg, jpg_len) : 0;
+    const bool inBudget =
+        encoded && jpg_len > 0 && jpg_len <= CELL_AI_MAX_JPEG;
+    const bool sizedOk = jpg_len >= CLOUD_SAFE_MIN_JPEG &&
+                         div >= CLOUD_SAFE_MIN_DIVERSITY;
+    const bool richSmallOk = jpg_len >= CLOUD_SAFE_RICH_MIN_JPEG &&
+                             div >= CLOUD_SAFE_RICH_DIVERSITY;
+    const bool ok = inBudget && (sizedOk || richSmallOk);
+    Serial.printf(
+        "[CAM] cloud-safe %s %ux%u fmt=%d → jpg %u div=%u q=%d flash=%d ok=%d\n",
+        tag, fb->width, fb->height, static_cast<int>(fb->format),
+        static_cast<unsigned>(jpg_len), static_cast<unsigned>(div),
+        CLOUD_SAFE_JPG_QUALITY, flashOn ? 1 : 0, ok ? 1 : 0);
+    if (flashOn) {
+      setOv5640Flash(false);
+    }
     esp_camera_fb_return(fb);
     esp_camera_deinit();
     delay(120);
@@ -1130,10 +1168,28 @@ bool captureCloudSafeJpeg(std::vector<uint8_t>& out) {
     return true;
   };
 
-  bool ok = tryFormat(PIXFORMAT_YUV422, "YUV422");
+  auto tryPipeline = [&](bool forceFlash) -> bool {
+#if CLOUD_SAFE_USE_HVGA
+    if (tryFormat(PIXFORMAT_YUV422, FRAMESIZE_HVGA, forceFlash, "YUV-HVGA")) {
+      return true;
+    }
+#endif
+    if (tryFormat(PIXFORMAT_YUV422, FRAMESIZE_QVGA, forceFlash, "YUV-QVGA")) {
+      return true;
+    }
+    if (tryFormat(PIXFORMAT_RGB565, FRAMESIZE_QVGA, forceFlash, "RGB-QVGA")) {
+      return true;
+    }
+    return false;
+  };
+
+  bool ok = tryPipeline(false);
+#if CAM_AUTO_FLASH
   if (!ok) {
-    ok = tryFormat(PIXFORMAT_RGB565, "RGB565");
+    Serial.println("[CAM] cloud-safe: retry with flash");
+    ok = tryPipeline(true);
   }
+#endif
   // 无论成败都恢复日常 JPEG 模式
   if (!recoverJpegCamera()) {
     Serial.println("[CAM] cloud-safe: recover JPEG failed");
