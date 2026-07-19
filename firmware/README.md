@@ -4,8 +4,8 @@ YD-ESP32-S3（N16R8）+ ST7789 + OV5640 + A7670。默认烧录即可用真屏整
 
 3D 外壳（打印）：见 [`cad/PRINT.md`](cad/PRINT.md)，交付 `cad/stl/saoti_front.stl` + `saoti_back.stl`。
 
-**AI 解题**：家用 WiFi + 阿里云通义 VL（`qwen-vl-plus`）。  
-**4G**：开机探测 + 上传兜底（需模块蓝灯/独立 5V；硬件未通时不影响 WiFi 扫题）。
+**AI 解题**：默认 **只用 4G** 访问智谱 GLM-V（`glm-4.6v-flash`，额度不足自动切换）。  
+**4G**：开机拨号；SoftAP/家用 WiFi 已关闭（`NET_CELL_ONLY=1`）。预览可用 USB 串口推流。
 
 ## 功能清单
 
@@ -14,9 +14,9 @@ YD-ESP32-S3（N16R8）+ ST7789 + OV5640 + A7670。默认烧录即可用真屏整
 | ST7789 显示 | 可用 | 状态页 + ASCII 答案摘要 |
 | OV5640 拍照扫题 | 可用* | 短按 BOOT / 串口 `s` / SoftAP `/scan` |
 | 无摄像头降级 | 可用 | 固定题图测 AI；长按 BOOT / `t` / SoftAP `/test` |
-| SoftAP 控制台 | 可用 | `/` `/answer` `/status` `/test` `/stream` |
-| WiFi + 通义 VL | 可用 | 填 `secrets.h` |
-| 4G A7670 | 代码就绪 | 依赖独立 5V 与模块开机；串口 `NET`/`DIAG` |
+| SoftAP 控制台 | 默认关闭 | `NET_CELL_ONLY=1` 时不开热点 |
+| 通义 VL 解题 | 4G + ESP-TLS | 模块只开 TCP，ESP32 mbedTLS 做 HTTPS |
+| 4G A7670 | 默认 | 开机拨号；串口 `NET`/`DIAG`/`FW`/`HTEST` |
 | USB 推流 | 可选 | 串口 `V`/`v` |
 
 \* 成像质量取决于摄像头硬件与接线；微雪 C 型按 **D2–D9→GPIO6–13**（见 [WIRING.md](WIRING.md)）。
@@ -24,9 +24,9 @@ YD-ESP32-S3（N16R8）+ ST7789 + OV5640 + A7670。默认烧录即可用真屏整
 ## 快速开始
 
 ```bash
-cd ~/Documents/saoti-guajian-fw
+cd firmware
 cp include/secrets.example.h include/secrets.h   # 首次
-# 编辑 secrets.h：OPENAI_API_KEY（百炼）+ 可上网 WiFi
+# 编辑 secrets.h：OPENAI_API_KEY（智谱）+ 可上网 WiFi（CELL_ONLY 时可留空）
 pio run -e esp32s3-devkitc-1 -t upload
 ```
 
@@ -46,14 +46,16 @@ pio run -e esp32s3-devkitc-1 -t upload
 | `NET` / `DIAG` | 4G 诊断 |
 | `V` / `v` | 开/关 USB 推流 |
 | `APN=xxx` | 设置蜂窝 APN |
+| `MODEL` | 查看当前视觉模型与已耗尽列表 |
+| `MODEL=reset` | 清空「额度用尽」标记，从首选模型重试 |
 
 ## AI 配置
 
 | 项 | 说明 |
 |----|------|
-| `include/secrets.h` | 百炼 Key + WiFi（已 gitignore） |
-| 接口 | `dashscope.../compatible-mode/v1` |
-| 模型 | `qwen-vl-plus`（`config.h` 可改） |
+| `include/secrets.h` | 智谱 Key + WiFi（已 gitignore） |
+| 接口 | `open.bigmodel.cn/api/paas/v4/chat/completions` |
+| 模型 | 默认 `glm-4.6v-flash`；额度不足自动切换其它 GLM-V 模型 |
 
 ## 接线
 

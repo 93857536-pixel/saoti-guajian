@@ -1,34 +1,130 @@
 #include "config.h"
+#include "modules/modem.h"
 #include "modules/solver.h"
 
 #if USE_OPENAI_SOLVER
 
+#include <Preferences.h>
+#include "esp_heap_caps.h"
+#include "mbedtls/base64.h"
+#if USE_WIFI_FALLBACK
 #include <HTTPClient.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
-#include "mbedtls/base64.h"
-#include "esp_heap_caps.h"
+#endif
 
 namespace {
 
 String gSharedAnswer;
 String gLastError;
 uint32_t gAnswerAtMs = 0;
+Modem* gModem = nullptr;
 
-bool wifiConfigured() {
-  return WIFI_SSID[0] != '\0' && strcmp(WIFI_SSID, "YOUR_SSID") != 0;
+// 智谱视觉模型池（429/繁忙时自动换下一个，不永久拉黑）
+const char* kVisionModels[] = {
+    "glm-4v-flash",              // 免费视觉，相对稳
+    "glm-4.6v-flash",
+    "glm-4.1v-thinking-flash",
+    "glm-4v",
+    "glm-4.5v",
+    "glm-4.6v",
+};
+constexpr int kVisionModelCount =
+    static_cast<int>(sizeof(kVisionModels) / sizeof(kVisionModels[0]));
+
+Preferences gPrefs;
+bool gPrefsReady = false;
+uint32_t gExhaustedMask = 0;
+int gPreferredIndex = 0;
+
+int findModelIndex(const char* name) {
+  if (!name || !name[0]) {
+    return -1;
+  }
+  for (int i = 0; i < kVisionModelCount; ++i) {
+    if (strcmp(kVisionModels[i], name) == 0) {
+      return i;
+    }
+  }
+  return -1;
 }
 
-bool ensureStaInternet() {
+void persistPool() {
+  if (!gPrefsReady) {
+    return;
+  }
+  gPrefs.putUInt("exh", gExhaustedMask);
+  gPrefs.putChar("pref", static_cast<int8_t>(gPreferredIndex));
+}
+
+void loadPool() {
+  if (!gPrefsReady) {
+    // 独立命名空间，避免沿用百炼时代的耗尽位图
+    gPrefs.begin("saoti-zhipu", false);
+    gPrefsReady = true;
+  }
+  gExhaustedMask = gPrefs.getUInt("exh", 0);
+  const int8_t pref = gPrefs.getChar("pref", -1);
+  const int configured = findModelIndex(OPENAI_MODEL);
+  if (pref >= 0 && pref < kVisionModelCount) {
+    gPreferredIndex = pref;
+  } else if (configured >= 0) {
+    gPreferredIndex = configured;
+  } else {
+    gPreferredIndex = 0;
+  }
+  // 若首选已被标记耗尽，找下一个可用
+  if (gExhaustedMask & (1u << gPreferredIndex)) {
+    for (int i = 0; i < kVisionModelCount; ++i) {
+      const int idx = (gPreferredIndex + i) % kVisionModelCount;
+      if ((gExhaustedMask & (1u << idx)) == 0) {
+        gPreferredIndex = idx;
+        break;
+      }
+    }
+  }
+  Serial.printf("[AI] model pool ready: prefer=%s exhausted=0x%04lX\n",
+                kVisionModels[gPreferredIndex],
+                static_cast<unsigned long>(gExhaustedMask));
+}
+
+// 永久耗尽/不可用：写入 exhausted，后续优先跳过
+bool isPermanentModelFail(const String& body) {
+  return body.indexOf("FreeTierOnly") >= 0 ||
+         body.indexOf("Free quota exhausted") >= 0 ||
+         body.indexOf("use free tier only") >= 0 ||
+         body.indexOf("AllocationQuota.FreeTierOnly") >= 0 ||
+         body.indexOf("余额不足") >= 0 ||
+         body.indexOf("额度不足") >= 0 ||
+         body.indexOf("insufficient balance") >= 0 ||
+         body.indexOf("insufficient_quota") >= 0 ||
+         body.indexOf("\"code\":\"1113\"") >= 0 ||
+         body.indexOf("\"code\":1113") >= 0 ||
+         body.indexOf("does not exist") >= 0 ||
+         body.indexOf("model_not_found") >= 0 ||
+         body.indexOf("无权限") >= 0;
+}
+
+// 临时繁忙/限流：换模型重试，不永久拉黑（智谱 429/访问量过大）
+bool isTransientBusy(int httpCode, const String& body) {
+  if (httpCode == 429 || httpCode == 503 || httpCode == 502) {
+    return true;
+  }
+  return body.indexOf("访问量过大") >= 0 || body.indexOf("稍后再试") >= 0 ||
+         body.indexOf("rate limit") >= 0 || body.indexOf("RateLimit") >= 0 ||
+         body.indexOf("\"code\":\"1302\"") >= 0 ||
+         body.indexOf("\"code\":1302") >= 0;
+}
+
+bool ensureInternet() {
+#if USE_WIFI_FALLBACK
   if (WiFi.status() == WL_CONNECTED) {
     return true;
   }
-  if (!wifiConfigured()) {
+  if (WIFI_SSID[0] == '\0' || strcmp(WIFI_SSID, "YOUR_SSID") == 0) {
     return false;
   }
-  // 保留 SoftAP 预览，同时连可上网 WiFi
   WiFi.mode(WIFI_AP_STA);
-  // IDLE 也需要 begin（仅 DISCONNECTED 时 begin 会漏掉部分状态）
   if (WiFi.status() == WL_IDLE_STATUS || WiFi.status() == WL_DISCONNECTED ||
       WiFi.status() == WL_NO_SSID_AVAIL || WiFi.status() == WL_CONNECT_FAILED) {
     WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -43,6 +139,18 @@ bool ensureStaInternet() {
   }
   Serial.println("[AI] STA connect FAIL");
   return false;
+#else
+  if (!gModem) {
+    Serial.println("[AI] modem ptr missing");
+    return false;
+  }
+  if (!gModem->ensureCellNetwork()) {
+    Serial.println("[AI] 4G network FAIL");
+    return false;
+  }
+  Serial.println("[AI] 4G network OK");
+  return true;
+#endif
 }
 
 char* mallocPsram(size_t n) {
@@ -86,7 +194,6 @@ int hexNibble(char c) {
   return -1;
 }
 
-// 从 JSON 文本中提取指定 key 的字符串值（支持转义与 \\uXXXX 基本 BMP）
 String extractJsonStringField(const String& body, const char* key, int startFrom = 0) {
   const String pattern = String("\"") + key + "\":";
   int i = body.indexOf(pattern, startFrom);
@@ -150,7 +257,6 @@ String extractJsonStringField(const String& body, const char* key, int startFrom
   return out;
 }
 
-// 优先解析 OpenAI/DashScope: choices[0].message.content
 String extractAssistantContent(const String& body) {
   const int choices = body.indexOf("\"choices\"");
   if (choices >= 0) {
@@ -183,7 +289,142 @@ String htmlEscape(const String& in) {
   return out;
 }
 
+char* buildRequestJson(const char* model, const char* b64, size_t b64Len,
+                       size_t* outLen) {
+  // 智谱视觉：图片在前；不用 max_tokens（部分 VL 会 1210）
+  const char* p0 = "{\"model\":\"";
+  const char* p1 =
+      "\",\"messages\":[{\"role\":\"user\",\"content\":["
+      "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,";
+  const char* p2 =
+      "\"}},"
+      "{\"type\":\"text\",\"text\":\"你是扫题挂件助手。请尽力识别图片中的题目文字"
+      "（即使略模糊/倾斜也请尝试辨认）。用中文给出：1)最终答案 "
+      "2)简要解题步骤（尽量简洁，适合小屏幕）。"
+      "仅当完全无法辨认任何题目内容时，才回复看不清请重新拍照。\"}]}]}";
+
+  const size_t jsonLen =
+      strlen(p0) + strlen(model) + strlen(p1) + b64Len + strlen(p2);
+  char* json = mallocPsram(jsonLen + 1);
+  if (!json) {
+    return nullptr;
+  }
+  char* w = json;
+  memcpy(w, p0, strlen(p0));
+  w += strlen(p0);
+  memcpy(w, model, strlen(model));
+  w += strlen(model);
+  memcpy(w, p1, strlen(p1));
+  w += strlen(p1);
+  memcpy(w, b64, b64Len);
+  w += b64Len;
+  memcpy(w, p2, strlen(p2) + 1);
+  *outLen = jsonLen;
+  return json;
+}
+
+bool postOnce(const char* model, char* json, size_t jsonLen, int* httpCode,
+              String* bodyOut) {
+  Serial.printf("[AI] POST model=%s (%u bytes) via=%s\n", model,
+                static_cast<unsigned>(jsonLen),
+#if USE_WIFI_FALLBACK
+                "WiFi"
+#else
+                "4G"
+#endif
+  );
+
+#if USE_WIFI_FALLBACK
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(OPENAI_TIMEOUT_MS / 1000);
+
+  HTTPClient http;
+  http.setTimeout(OPENAI_TIMEOUT_MS);
+  http.setReuse(false);
+  if (!http.begin(client, OPENAI_BASE_URL)) {
+    *httpCode = -1;
+    *bodyOut = "";
+    return false;
+  }
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", String("Bearer ") + OPENAI_API_KEY);
+
+  const int code = http.POST(reinterpret_cast<uint8_t*>(json), jsonLen);
+  *httpCode = code;
+  *bodyOut = http.getString();
+  http.end();
+  Serial.printf("[AI] HTTP %d, body %u\n", code,
+                static_cast<unsigned>(bodyOut->length()));
+  return code >= 200 && code < 300;
+#else
+  if (!gModem) {
+    *httpCode = -1;
+    *bodyOut = "";
+    return false;
+  }
+  const CellHttpResult hr = gModem->httpsPostJson(
+      OPENAI_BASE_URL, OPENAI_API_KEY, reinterpret_cast<uint8_t*>(json),
+      jsonLen);
+  *httpCode = hr.httpCode;
+  *bodyOut = hr.body;
+  Serial.printf("[AI] HTTP %d, body %u\n", hr.httpCode,
+                static_cast<unsigned>(bodyOut->length()));
+  return hr.ok && hr.httpCode >= 200 && hr.httpCode < 300;
+#endif
+}
+
 }  // namespace
+
+void solverBegin() { loadPool(); }
+
+void solverSetModem(Modem* modem) { gModem = modem; }
+
+const char* solverActiveModel() {
+  if (gPreferredIndex < 0 || gPreferredIndex >= kVisionModelCount) {
+    return OPENAI_MODEL;
+  }
+  return kVisionModels[gPreferredIndex];
+}
+
+void solverResetModelPool() {
+  gExhaustedMask = 0;
+  const int configured = findModelIndex(OPENAI_MODEL);
+  gPreferredIndex = configured >= 0 ? configured : 0;
+  persistPool();
+  Serial.printf("[AI] model pool reset → prefer=%s\n", solverActiveModel());
+}
+
+String solverModelPoolStatus() {
+  String s;
+  s.reserve(256);
+  s += F("{\"type\":\"models\",\"active\":\"");
+  s += solverActiveModel();
+  s += F("\",\"exhausted\":[");
+  bool first = true;
+  for (int i = 0; i < kVisionModelCount; ++i) {
+    if (gExhaustedMask & (1u << i)) {
+      if (!first) {
+        s += ',';
+      }
+      first = false;
+      s += '"';
+      s += kVisionModels[i];
+      s += '"';
+    }
+  }
+  s += F("],\"pool\":[");
+  for (int i = 0; i < kVisionModelCount; ++i) {
+    if (i) {
+      s += ',';
+    }
+    s += '"';
+    s += kVisionModels[i];
+    s += '"';
+  }
+  s += F("]}");
+  return s;
+}
 
 void solverSetSharedAnswer(const String& answer) {
   gSharedAnswer = answer;
@@ -201,6 +442,8 @@ String solverLastError() { return gLastError; }
 
 bool solverHasAnswer() { return gSharedAnswer.length() > 0; }
 
+String solverLastAnswerText() { return gSharedAnswer; }
+
 uint32_t solverAnswerAgeMs() {
   if (gAnswerAtMs == 0) {
     return 0;
@@ -210,7 +453,7 @@ uint32_t solverAnswerAgeMs() {
 
 String solverLastAnswerHtml() {
   String html;
-  html.reserve(gSharedAnswer.length() + gLastError.length() + 512);
+  html.reserve(gSharedAnswer.length() + gLastError.length() + 640);
   html += F("<!doctype html><html><head><meta charset=utf-8>"
             "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
             "<title>扫题答案</title><style>"
@@ -220,6 +463,9 @@ String solverLastAnswerHtml() {
             "border-radius:8px}"
             ".err{color:#b00020}.meta{color:#666;font-size:14px}"
             "a{color:#0b57d0}</style></head><body><h2>扫题答案</h2>");
+  html += F("<p class=meta>当前模型：");
+  html += htmlEscape(String(solverActiveModel()));
+  html += F("</p>");
   if (gSharedAnswer.isEmpty()) {
     html += F("<p>暂无答案。</p>");
     if (gLastError.length() > 0) {
@@ -252,16 +498,45 @@ SolveResult Solver::solveJpeg(const uint8_t* jpeg, size_t len) {
     solverSetLastError(r.error);
     return r;
   }
-  if (strncmp(OPENAI_API_KEY, "sk-", 3) != 0 ||
-      strcmp(OPENAI_API_KEY, "sk-REPLACE_ME") == 0) {
-    r.error = "set API key";
+#if !USE_WIFI_FALLBACK
+  if (len > CELL_AI_MAX_JPEG) {
+    Serial.printf("[AI] jpeg %u > %u — too large for 4G HTTP\n",
+                  static_cast<unsigned>(len),
+                  static_cast<unsigned>(CELL_AI_MAX_JPEG));
+    r.error = "jpeg too large for 4G";
     solverSetLastError(r.error);
     return r;
   }
-  if (!ensureStaInternet()) {
-    r.error = "need WiFi (secrets.h)";
+#endif
+  // 智谱 Key 多为 id.secret；也兼容 sk- 前缀。拒绝占位符。
+  if (OPENAI_API_KEY[0] == '\0' ||
+      strcmp(OPENAI_API_KEY, "sk-REPLACE_ME") == 0 ||
+      strcmp(OPENAI_API_KEY, "YOUR_ZHIPU_API_KEY") == 0 ||
+      strlen(OPENAI_API_KEY) < 16) {
+    r.error = "set Zhipu API key";
     solverSetLastError(r.error);
     return r;
+  }
+  if (len < 800 || jpeg[0] != 0xFF || jpeg[1] != 0xD8 ||
+      jpeg[len - 2] != 0xFF || jpeg[len - 1] != 0xD9) {
+    r.error = "bad image";
+    solverSetLastError(r.error);
+    Serial.printf("[AI] reject jpeg magic len=%u head=%02X%02X tail=%02X%02X\n",
+                  static_cast<unsigned>(len), jpeg[0], jpeg[1],
+                  len >= 2 ? jpeg[len - 2] : 0, len >= 1 ? jpeg[len - 1] : 0);
+    return r;
+  }
+  if (!ensureInternet()) {
+#if USE_WIFI_FALLBACK
+    r.error = "need WiFi (secrets.h)";
+#else
+    r.error = "need 4G network";
+#endif
+    solverSetLastError(r.error);
+    return r;
+  }
+  if (!gPrefsReady) {
+    loadPool();
   }
 
   char* b64 = nullptr;
@@ -273,58 +548,99 @@ SolveResult Solver::solveJpeg(const uint8_t* jpeg, size_t len) {
     return r;
   }
 
-  const char* prefix =
-      "{\"model\":\"" OPENAI_MODEL "\","
-      "\"max_tokens\":800,"
-      "\"messages\":[{\"role\":\"user\",\"content\":["
-      "{\"type\":\"text\",\"text\":\"你是扫题挂件助手。请识别图片中的题目，"
-      "用中文给出：1)最终答案 2)简要解题步骤（尽量简洁，适合小屏幕）。"
-      "若看不清请说明。\"},"
-      "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,";
-  const char* suffix = "\"}}]}]}";
+  const int maxTries =
+      OPENAI_MODEL_MAX_TRIES < kVisionModelCount ? OPENAI_MODEL_MAX_TRIES
+                                                 : kVisionModelCount;
+  int tried = 0;
+  String lastBody;
+  int lastCode = 0;
+  bool sawTransientBusy = false;
 
-  const size_t jsonLen = strlen(prefix) + b64Len + strlen(suffix);
-  char* json = mallocPsram(jsonLen + 1);
-  if (!json) {
-    free(b64);
-    r.error = "json OOM";
-    solverSetLastError(r.error);
-    return r;
-  }
-  memcpy(json, prefix, strlen(prefix));
-  memcpy(json + strlen(prefix), b64, b64Len);
-  memcpy(json + strlen(prefix) + b64Len, suffix, strlen(suffix) + 1);
-  free(b64);
-  b64 = nullptr;
+  for (int step = 0; step < kVisionModelCount && tried < maxTries; ++step) {
+    const int idx = (gPreferredIndex + step) % kVisionModelCount;
+    if (gExhaustedMask & (1u << idx)) {
+      Serial.printf("[AI] skip exhausted %s\n", kVisionModels[idx]);
+      continue;
+    }
+    ++tried;
+    const char* model = kVisionModels[idx];
 
-  Serial.printf("[AI] POST %s (%u bytes) model=%s\n", OPENAI_BASE_URL,
-                static_cast<unsigned>(jsonLen), OPENAI_MODEL);
+    size_t jsonLen = 0;
+    char* json = buildRequestJson(model, b64, b64Len, &jsonLen);
+    if (!json) {
+      free(b64);
+      r.error = "json OOM";
+      solverSetLastError(r.error);
+      return r;
+    }
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  client.setTimeout(OPENAI_TIMEOUT_MS / 1000);
-
-  HTTPClient http;
-  http.setTimeout(OPENAI_TIMEOUT_MS);
-  http.setReuse(false);
-  if (!http.begin(client, OPENAI_BASE_URL)) {
+    int code = 0;
+    String body;
+    bool okHttp = postOnce(model, json, jsonLen, &code, &body);
+    // 4G TLS 偶发 HTTP -1/空包：同模型立即重试一次
+    if (!okHttp && (code < 0 || body.length() == 0)) {
+      Serial.println("[AI] empty/transport fail — retry once");
+      delay(500);
+      okHttp = postOnce(model, json, jsonLen, &code, &body);
+    }
     free(json);
-    r.error = "http begin fail";
-    solverSetLastError(r.error);
-    return r;
-  }
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Authorization", String("Bearer ") + OPENAI_API_KEY);
+    r.httpCode = code;
+    lastCode = code;
+    lastBody = body;
 
-  const int code = http.POST(reinterpret_cast<uint8_t*>(json), jsonLen);
-  free(json);
-  r.httpCode = code;
+    if (okHttp) {
+      String answer = extractAssistantContent(body);
+      if (answer.isEmpty()) {
+        free(b64);
+        r.error = "parse answer fail";
+        solverSetLastError(r.error);
+        Serial.println(body.substring(0, 500));
+        return r;
+      }
+      answer.trim();
+      if (gPreferredIndex != idx) {
+        Serial.printf("[AI] switched model → %s\n", model);
+      }
+      gPreferredIndex = idx;
+      persistPool();
+      lastAnswer_ = answer;
+      solverSetSharedAnswer(answer);
+      r.ok = true;
+      r.answer = answer;
+      Serial.println("[AI] ---- answer ----");
+      Serial.println(answer);
+      Serial.println("[AI] ----------------");
+      free(b64);
+      return r;
+    }
 
-  String body = http.getString();
-  http.end();
-  Serial.printf("[AI] HTTP %d, body %u\n", code, static_cast<unsigned>(body.length()));
+    if (isTransientBusy(code, body)) {
+      sawTransientBusy = true;
+      Serial.printf("[AI] busy/429 on %s → try next model\n", model);
+      delay(400);
+      continue;
+    }
 
-  if (code < 200 || code >= 300) {
+    // 图片格式错误：换模型通常无效，直接提示重拍
+    if (body.indexOf("\"code\":\"1210\"") >= 0 ||
+        body.indexOf("\"code\":1210") >= 0 ||
+        (body.indexOf("图片") >= 0 && body.indexOf("解析") >= 0)) {
+      free(b64);
+      r.error = "bad image";
+      solverSetLastError(r.error);
+      Serial.println(body.substring(0, 300));
+      return r;
+    }
+
+    if (isPermanentModelFail(body)) {
+      Serial.printf("[AI] permanent fail on %s → try next\n", model);
+      gExhaustedMask |= (1u << idx);
+      persistPool();
+      continue;
+    }
+
+    // 鉴权等致命错误：停止
+    free(b64);
     r.error = "ai http error";
     solverSetLastError(r.error);
     if (body.length() > 0) {
@@ -333,22 +649,22 @@ SolveResult Solver::solveJpeg(const uint8_t* jpeg, size_t len) {
     return r;
   }
 
-  String answer = extractAssistantContent(body);
-  if (answer.isEmpty()) {
-    r.error = "parse answer fail";
-    solverSetLastError(r.error);
-    Serial.println(body.substring(0, 500));
-    return r;
+  free(b64);
+  if ((gExhaustedMask & ((1u << kVisionModelCount) - 1)) ==
+      ((1u << kVisionModelCount) - 1)) {
+    Serial.println("[AI] all models marked exhausted; clearing mask");
+    gExhaustedMask = 0;
+    persistPool();
   }
-
-  answer.trim();
-  lastAnswer_ = answer;
-  solverSetSharedAnswer(answer);
-  r.ok = true;
-  r.answer = answer;
-  Serial.println("[AI] ---- answer ----");
-  Serial.println(answer);
-  Serial.println("[AI] ----------------");
+  if (sawTransientBusy || lastCode == 429) {
+    r.error = "ai busy";
+  } else {
+    r.error = "all VL free tiers exhausted";
+  }
+  solverSetLastError(r.error);
+  if (lastBody.length() > 0) {
+    Serial.println(lastBody.substring(0, 400));
+  }
   return r;
 }
 
@@ -359,6 +675,14 @@ String gSharedAnswer;
 String gLastError;
 uint32_t gAnswerAtMs = 0;
 }  // namespace
+
+void solverBegin() {}
+void solverSetModem(Modem* modem) { (void)modem; }
+const char* solverActiveModel() { return OPENAI_MODEL; }
+void solverResetModelPool() {}
+String solverModelPoolStatus() {
+  return F("{\"type\":\"models\",\"active\":\"disabled\"}");
+}
 
 SolveResult Solver::solveJpeg(const uint8_t* jpeg, size_t len) {
   (void)jpeg;
@@ -379,6 +703,8 @@ void solverSetLastError(const char* error) { gLastError = error ? error : ""; }
 String solverLastError() { return gLastError; }
 
 bool solverHasAnswer() { return gSharedAnswer.length() > 0; }
+
+String solverLastAnswerText() { return gSharedAnswer; }
 
 uint32_t solverAnswerAgeMs() {
   return gAnswerAtMs ? (millis() - gAnswerAtMs) : 0;

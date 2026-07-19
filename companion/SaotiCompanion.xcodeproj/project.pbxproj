@@ -1,0 +1,570 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		023E2E08C9E5828D8223AD42 /* WatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0B39729BC1B7D2517904A8 /* WatchBridge.swift */; };
+		14C08A8849393BBBDA9650BD /* DeviceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1839BD1902070B13A9AC182 /* DeviceModel.swift */; };
+		225B70E1E31D33D42DA38C9B /* SaotiWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE69D13DD6C546C1ED6B390 /* SaotiWatchApp.swift */; };
+		3239E5E4E0846B3ADEE86D9B /* DeviceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1839BD1902070B13A9AC182 /* DeviceModel.swift */; };
+		3F0356CF1367D42A08F634C6 /* DeviceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1839BD1902070B13A9AC182 /* DeviceModel.swift */; };
+		4C5954F3EE1DB36653307368 /* BleUUIDs.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F985F0D744DB254878A2D6 /* BleUUIDs.swift */; };
+		4F1B157B466FF8FB8E93EBBC /* BleUUIDs.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F985F0D744DB254878A2D6 /* BleUUIDs.swift */; };
+		52B4B9BB57C2EFC981EE7FA2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 40DB1DFB0471326B4E6FE541 /* Assets.xcassets */; };
+		583A32FD780EE2914DBFF28F /* CompanionRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5ED01E8BAACD5C64F920854 /* CompanionRootView.swift */; };
+		5D55DC6BE2CF1F01B4BDA10B /* SaotiCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3139F2B034F0B449181D50A8 /* SaotiCompanionApp.swift */; };
+		62C1E72E77773465F283A45B /* WatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0B39729BC1B7D2517904A8 /* WatchBridge.swift */; };
+		BF78A325C4C69DF8E5579ECF /* CompanionRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5ED01E8BAACD5C64F920854 /* CompanionRootView.swift */; };
+		D3FFBB252017F3C6CD977700 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 40DB1DFB0471326B4E6FE541 /* Assets.xcassets */; };
+		D5E15D8C93FF31AB28FA15E3 /* BleClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199DD30777D67CC2C8CB3EC3 /* BleClient.swift */; };
+		D74D63F9B91BFA90EB53AD70 /* SaotiWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 7AEDB1961A97D0B3BBC256B3 /* SaotiWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		F029991F853AAF43976DCBB3 /* BleClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199DD30777D67CC2C8CB3EC3 /* BleClient.swift */; };
+		F13209067BEEB8A48F457B52 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3B4C09DFD3E151259F78F2C7 /* Assets.xcassets */; };
+		FF5727BADD378E5C84147B4E /* SaotiCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3139F2B034F0B449181D50A8 /* SaotiCompanionApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		5AFD06F767BACA187F8ACB98 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 284ACEAF53A742199EBF9D36 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DF7AE89EC8922CE627F060FF;
+			remoteInfo = SaotiWatch;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		FB4E7D96FC8101C875667919 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				D74D63F9B91BFA90EB53AD70 /* SaotiWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		199DD30777D67CC2C8CB3EC3 /* BleClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BleClient.swift; sourceTree = "<group>"; };
+		3139F2B034F0B449181D50A8 /* SaotiCompanionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaotiCompanionApp.swift; sourceTree = "<group>"; };
+		3B4C09DFD3E151259F78F2C7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		40DB1DFB0471326B4E6FE541 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		4C951A0D9026E747CADC5E2B /* SaotiCompanion.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SaotiCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6DE69D13DD6C546C1ED6B390 /* SaotiWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaotiWatchApp.swift; sourceTree = "<group>"; };
+		7AEDB1961A97D0B3BBC256B3 /* SaotiWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SaotiWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		82BDD0C750740F078162DC47 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		A3D2069C452CD1B479FBD8A2 /* SaotiCompanionMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SaotiCompanionMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A3F985F0D744DB254878A2D6 /* BleUUIDs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BleUUIDs.swift; sourceTree = "<group>"; };
+		A5ED01E8BAACD5C64F920854 /* CompanionRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionRootView.swift; sourceTree = "<group>"; };
+		AA0B39729BC1B7D2517904A8 /* WatchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchBridge.swift; sourceTree = "<group>"; };
+		C123ACDF7CF76A5A1209327A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		C1839BD1902070B13A9AC182 /* DeviceModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceModel.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		4EEEE755C0EDD388B61A359A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				4C951A0D9026E747CADC5E2B /* SaotiCompanion.app */,
+				A3D2069C452CD1B479FBD8A2 /* SaotiCompanionMac.app */,
+				7AEDB1961A97D0B3BBC256B3 /* SaotiWatch.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		84A5DE8BB6B3132BD1806684 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				40DB1DFB0471326B4E6FE541 /* Assets.xcassets */,
+				A5ED01E8BAACD5C64F920854 /* CompanionRootView.swift */,
+				82BDD0C750740F078162DC47 /* Info.plist */,
+				3139F2B034F0B449181D50A8 /* SaotiCompanionApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		B14A835A94D5C353B1BD35FB /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				199DD30777D67CC2C8CB3EC3 /* BleClient.swift */,
+				A3F985F0D744DB254878A2D6 /* BleUUIDs.swift */,
+				C1839BD1902070B13A9AC182 /* DeviceModel.swift */,
+				AA0B39729BC1B7D2517904A8 /* WatchBridge.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		BBCC85EF7D1052A451772481 /* WatchApp */ = {
+			isa = PBXGroup;
+			children = (
+				3B4C09DFD3E151259F78F2C7 /* Assets.xcassets */,
+				C123ACDF7CF76A5A1209327A /* Info.plist */,
+				6DE69D13DD6C546C1ED6B390 /* SaotiWatchApp.swift */,
+			);
+			path = WatchApp;
+			sourceTree = "<group>";
+		};
+		C944096DC704FDEEC00D971D = {
+			isa = PBXGroup;
+			children = (
+				84A5DE8BB6B3132BD1806684 /* App */,
+				B14A835A94D5C353B1BD35FB /* Shared */,
+				BBCC85EF7D1052A451772481 /* WatchApp */,
+				4EEEE755C0EDD388B61A359A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2CFE7916F6A15914A4176AEE /* SaotiCompanion */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4AB2FFF1D699A7B5A43DD819 /* Build configuration list for PBXNativeTarget "SaotiCompanion" */;
+			buildPhases = (
+				77E785B7A9AE30F39DEE0A7E /* Sources */,
+				8F66F3DA687B3AC3E86EA86D /* Resources */,
+				FB4E7D96FC8101C875667919 /* Embed Watch Content */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				77FC659934C9E860A1728C31 /* PBXTargetDependency */,
+			);
+			name = SaotiCompanion;
+			packageProductDependencies = (
+			);
+			productName = SaotiCompanion;
+			productReference = 4C951A0D9026E747CADC5E2B /* SaotiCompanion.app */;
+			productType = "com.apple.product-type.application";
+		};
+		96238710FC2CC47692B79DBF /* SaotiCompanionMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CF3513AC2526F06361A6C912 /* Build configuration list for PBXNativeTarget "SaotiCompanionMac" */;
+			buildPhases = (
+				8E1C1F6B017DA437ABB299C0 /* Sources */,
+				9ECC781A472FEEAF57B86F5B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SaotiCompanionMac;
+			packageProductDependencies = (
+			);
+			productName = SaotiCompanionMac;
+			productReference = A3D2069C452CD1B479FBD8A2 /* SaotiCompanionMac.app */;
+			productType = "com.apple.product-type.application";
+		};
+		DF7AE89EC8922CE627F060FF /* SaotiWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C25E35C59A014A17D9973B1C /* Build configuration list for PBXNativeTarget "SaotiWatch" */;
+			buildPhases = (
+				7018C38C997E4C73036E7055 /* Sources */,
+				11C507F58FDCF1DE57A861B9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SaotiWatch;
+			packageProductDependencies = (
+			);
+			productName = SaotiWatch;
+			productReference = 7AEDB1961A97D0B3BBC256B3 /* SaotiWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		284ACEAF53A742199EBF9D36 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					2CFE7916F6A15914A4176AEE = {
+						DevelopmentTeam = 4B7F8BR8R4;
+						ProvisioningStyle = Automatic;
+					};
+					96238710FC2CC47692B79DBF = {
+						DevelopmentTeam = 4B7F8BR8R4;
+						ProvisioningStyle = Automatic;
+					};
+					DF7AE89EC8922CE627F060FF = {
+						DevelopmentTeam = 4B7F8BR8R4;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = E27ECBE80C4EAACB5972D561 /* Build configuration list for PBXProject "SaotiCompanion" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = C944096DC704FDEEC00D971D;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 4EEEE755C0EDD388B61A359A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				2CFE7916F6A15914A4176AEE /* SaotiCompanion */,
+				96238710FC2CC47692B79DBF /* SaotiCompanionMac */,
+				DF7AE89EC8922CE627F060FF /* SaotiWatch */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		11C507F58FDCF1DE57A861B9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F13209067BEEB8A48F457B52 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8F66F3DA687B3AC3E86EA86D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				52B4B9BB57C2EFC981EE7FA2 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9ECC781A472FEEAF57B86F5B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D3FFBB252017F3C6CD977700 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7018C38C997E4C73036E7055 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3239E5E4E0846B3ADEE86D9B /* DeviceModel.swift in Sources */,
+				225B70E1E31D33D42DA38C9B /* SaotiWatchApp.swift in Sources */,
+				023E2E08C9E5828D8223AD42 /* WatchBridge.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		77E785B7A9AE30F39DEE0A7E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D5E15D8C93FF31AB28FA15E3 /* BleClient.swift in Sources */,
+				4F1B157B466FF8FB8E93EBBC /* BleUUIDs.swift in Sources */,
+				BF78A325C4C69DF8E5579ECF /* CompanionRootView.swift in Sources */,
+				14C08A8849393BBBDA9650BD /* DeviceModel.swift in Sources */,
+				FF5727BADD378E5C84147B4E /* SaotiCompanionApp.swift in Sources */,
+				62C1E72E77773465F283A45B /* WatchBridge.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8E1C1F6B017DA437ABB299C0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F029991F853AAF43976DCBB3 /* BleClient.swift in Sources */,
+				4C5954F3EE1DB36653307368 /* BleUUIDs.swift in Sources */,
+				583A32FD780EE2914DBFF28F /* CompanionRootView.swift in Sources */,
+				3F0356CF1367D42A08F634C6 /* DeviceModel.swift in Sources */,
+				5D55DC6BE2CF1F01B4BDA10B /* SaotiCompanionApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		77FC659934C9E860A1728C31 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DF7AE89EC8922CE627F060FF /* SaotiWatch */;
+			targetProxy = 5AFD06F767BACA187F8ACB98 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		08CA6263EB92A0CF1AFC1F1B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.saoti.companion;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		1966C45013670DDB7BFB0E93 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WatchApp/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.saoti.companion.watchkitapp;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Release;
+		};
+		2606840A9A905D5EF6225CAA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.saoti.companion.mac;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		27EEC2391C1FC095AF211698 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.saoti.companion.mac;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		81818007612D017B387DD7C3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 2;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 4B7F8BR8R4;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+			};
+			name = Debug;
+		};
+		96A6B8FAB8BF0C462B5853E4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 2;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 4B7F8BR8R4;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+			};
+			name = Release;
+		};
+		ED273CD6CA43CCAC6F20939C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WatchApp/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.saoti.companion.watchkitapp;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Debug;
+		};
+		F44C15C49EA5547B4A5A829D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.saoti.companion;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4AB2FFF1D699A7B5A43DD819 /* Build configuration list for PBXNativeTarget "SaotiCompanion" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F44C15C49EA5547B4A5A829D /* Debug */,
+				08CA6263EB92A0CF1AFC1F1B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C25E35C59A014A17D9973B1C /* Build configuration list for PBXNativeTarget "SaotiWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ED273CD6CA43CCAC6F20939C /* Debug */,
+				1966C45013670DDB7BFB0E93 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CF3513AC2526F06361A6C912 /* Build configuration list for PBXNativeTarget "SaotiCompanionMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				27EEC2391C1FC095AF211698 /* Debug */,
+				2606840A9A905D5EF6225CAA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E27ECBE80C4EAACB5972D561 /* Build configuration list for PBXProject "SaotiCompanion" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				81818007612D017B387DD7C3 /* Debug */,
+				96A6B8FAB8BF0C462B5853E4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 284ACEAF53A742199EBF9D36 /* Project object */;
+}

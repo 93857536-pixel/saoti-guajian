@@ -1,16 +1,22 @@
 .DS_Store
 **/.DS_Store
 
+# Secrets — never commit API keys / WiFi passwords
+**/secrets.h
+firmware/include/secrets.h
+
 # PlatformIO
 firmware/.pio/
 firmware/platformio.local.ini
+firmware/logs/
 
-# Xcode / macOS app build
+# Xcode / Apple apps
+**/build/
+**/DerivedData/
+**/xcuserdata/
+**/*.xcuserstate
 macos-app/build/
-macos-app/DerivedData/
-macos-app/**/xcuserdata/
-macos-app/*.xcuserstate
-macos-app/**/*.xcuserstate
+companion/build/
 
 # Editor
 .vscode/

@@ -2,17 +2,64 @@
 #include "pins.h"
 #include "modules/modem.h"
 
-#if USE_WIFI_FALLBACK || STREAM_ENABLE
-#include <HTTPClient.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
+#if USE_WIFI_FALLBACK || STREAM_ENABLE || NET_CELL_ONLY
 #include <WiFi.h>
 #endif
+#if USE_WIFI_FALLBACK
+#include <HTTPClient.h>
+#endif
 
-namespace {
+// ESP-TLS（modem_esp_tls.cpp）使用的 AT 原语
+bool modemEspTlsHttpsPost(const char* url, const char* bearer, const uint8_t* data,
+                          size_t len, int* httpCode, String* bodyOut);
+
+namespace modem_at {
 
 HardwareSerial& kModemUart = Serial2;
 bool kNetworkOpen = false;
 String kActiveApn = CELL_APN;
 int kLastCsq = -1;
+SemaphoreHandle_t kModemMtx = nullptr;
+
+void modemLockInit() {
+  if (!kModemMtx) {
+    kModemMtx = xSemaphoreCreateRecursiveMutex();
+  }
+}
+
+bool lockBus(uint32_t timeoutMs) {
+  modemLockInit();
+  if (!kModemMtx) {
+    return false;
+  }
+  return xSemaphoreTakeRecursive(kModemMtx, pdMS_TO_TICKS(timeoutMs)) == pdTRUE;
+}
+
+void unlockBus() {
+  if (kModemMtx) {
+    xSemaphoreGiveRecursive(kModemMtx);
+  }
+}
+
+struct BusGuard {
+  bool ok;
+  explicit BusGuard(uint32_t timeoutMs = 180000) : ok(lockBus(timeoutMs)) {
+    if (!ok) {
+      Serial.println("[NET] modem bus busy — command dropped");
+    }
+  }
+  ~BusGuard() {
+    if (ok) {
+      unlockBus();
+    }
+  }
+  explicit operator bool() const { return ok; }
+};
+
+HardwareSerial& uart() { return kModemUart; }
 
 void modemDrainRx() {
   while (kModemUart.available()) {
@@ -105,6 +152,11 @@ bool modemWaitToken(const char* token, uint32_t timeoutMs, String* out) {
 }
 
 bool modemSendAt(const char* cmd, uint32_t timeoutMs, String* out = nullptr) {
+  // 递归锁：长会话（TLS/拨号）外层已持锁时仍可嵌套
+  BusGuard guard(timeoutMs + 5000);
+  if (!guard) {
+    return false;
+  }
   modemDrainRx();
   if (cmd && cmd[0] != '\0') {
     kModemUart.print(cmd);
@@ -325,7 +377,14 @@ bool modemWaitRegistered(uint32_t timeoutMs) {
 
 bool modemEnsureNetwork() {
   if (kNetworkOpen) {
-    return true;
+    // 复核 IP：NETOPEN 可能已掉，避免 ESP-TLS 空连
+    String ip;
+    if (modemSendAt("AT+IPADDR", 5000, &ip) && ip.indexOf("+IPADDR:") >= 0 &&
+        ip.indexOf("0.0.0.0") < 0) {
+      return true;
+    }
+    Serial.println("[NET] IP lost — reopen PDP");
+    kNetworkOpen = false;
   }
   modemSendAt("ATE0", 2000);
   if (!modemWaitSimReady(45000)) {
@@ -366,21 +425,107 @@ bool modemEnsureNetwork() {
   return false;
 }
 
-int parseHttpActionCode(const String& resp) {
+bool parseHttpAction(const String& resp, int* httpCode, int* dataLen) {
   const int idx = resp.indexOf("+HTTPACTION:");
   if (idx < 0) {
-    return -1;
+    return false;
   }
   const int comma1 = resp.indexOf(',', idx);
   const int comma2 = resp.indexOf(',', comma1 + 1);
-  if (comma1 < 0 || comma2 < 0) {
-    return -1;
+  if (comma1 < 0) {
+    return false;
   }
-  return resp.substring(comma1 + 1, comma2).toInt();
+  if (httpCode) {
+    if (comma2 >= 0) {
+      *httpCode = resp.substring(comma1 + 1, comma2).toInt();
+    } else {
+      *httpCode = resp.substring(comma1 + 1).toInt();
+    }
+  }
+  if (dataLen) {
+    *dataLen = 0;
+    if (comma2 >= 0) {
+      *dataLen = resp.substring(comma2 + 1).toInt();
+    }
+  }
+  return true;
+}
+
+int parseHttpActionCode(const String& resp) {
+  int code = -1;
+  parseHttpAction(resp, &code, nullptr);
+  return code;
+}
+
+String extractHttpReadBody(const String& resp) {
+  // 兼容：+HTTPREAD: N  / +HTTPREAD: DATA,N  之后跟正文
+  int idx = resp.indexOf("+HTTPREAD:");
+  if (idx < 0) {
+    return "";
+  }
+  int lineEnd = resp.indexOf('\n', idx);
+  if (lineEnd < 0) {
+    return "";
+  }
+  String body = resp.substring(lineEnd + 1);
+  // 去掉尾部 OK / ERROR
+  const int okAt = body.lastIndexOf("\nOK");
+  if (okAt >= 0) {
+    body = body.substring(0, okAt);
+  }
+  const int errAt = body.lastIndexOf("\nERROR");
+  if (errAt >= 0) {
+    body = body.substring(0, errAt);
+  }
+  body.trim();
+  // 偶发前缀空行
+  while (body.startsWith("\r") || body.startsWith("\n")) {
+    body.remove(0, 1);
+  }
+  return body;
+}
+
+bool modemHttpWriteBody(const uint8_t* data, size_t len, uint32_t timeoutMs) {
+  const String dataCmd =
+      String("AT+HTTPDATA=") + String(static_cast<unsigned>(len)) + "," +
+      String(static_cast<unsigned>(timeoutMs));
+  // HTTPDATA 常先回 DOWNLOAD/> 再收数据，不走普通 OK 判定
+  modemDrainRx();
+  kModemUart.print(dataCmd);
+  kModemUart.print("\r\n");
+  Serial.printf("[NET] >> %s\n", dataCmd.c_str());
+  String prompt;
+  const uint32_t start = millis();
+  bool ready = false;
+  while (millis() - start < 15000) {
+    while (kModemUart.available()) {
+      const char c = static_cast<char>(kModemUart.read());
+      Serial.write(c);
+      prompt += c;
+      if (prompt.indexOf("DOWNLOAD") >= 0 || prompt.indexOf(">") >= 0) {
+        ready = true;
+        break;
+      }
+      if (prompt.indexOf("ERROR") >= 0) {
+        return false;
+      }
+    }
+    if (ready) {
+      break;
+    }
+    delay(5);
+  }
+  if (!ready) {
+    return false;
+  }
+  kModemUart.write(data, len);
+  Serial.printf("[NET] >> [%u bytes body]\n", static_cast<unsigned>(len));
+  return modemWaitToken("OK", timeoutMs, nullptr);
 }
 
 bool modemHttpPost(const uint8_t* data, size_t len, int* httpCode) {
   const String url = String("http://") + UPLOAD_HOST + UPLOAD_PATH;
+  modemSendAt("AT+HTTPTERM", 3000);
   if (!modemSendAt("AT+HTTPINIT", 5000)) {
     return false;
   }
@@ -390,35 +535,17 @@ bool modemHttpPost(const uint8_t* data, size_t len, int* httpCode) {
   }
   modemSendAt("AT+HTTPPARA=\"CONTENT\",\"application/octet-stream\"", 5000);
 
-  const String dataCmd =
-      String("AT+HTTPDATA=") + String(static_cast<unsigned>(len)) + ",60000";
-  if (!modemSendAt(dataCmd.c_str(), 5000)) {
-    modemSendAt("AT+HTTPTERM", 3000);
-    return false;
-  }
-  if (!modemWaitToken("DOWNLOAD", 10000, nullptr)) {
-    modemSendAt("AT+HTTPTERM", 3000);
-    return false;
-  }
-  if (!modemWaitToken(">", 10000, nullptr)) {
-    modemSendAt("AT+HTTPTERM", 3000);
-    return false;
-  }
-
-  kModemUart.write(data, len);
-  Serial.printf("[NET] >> [%u bytes binary]\n", static_cast<unsigned>(len));
-  if (!modemWaitToken("OK", 60000, nullptr)) {
+  if (!modemHttpWriteBody(data, len, 60000)) {
     modemSendAt("AT+HTTPTERM", 3000);
     return false;
   }
 
   String actionResp;
   if (!modemSendAt("AT+HTTPACTION=1", 90000, &actionResp)) {
-    modemSendAt("AT+HTTPTERM", 3000);
-    return false;
+    // 可能先回 OK 再异步 +HTTPACTION
   }
   if (actionResp.indexOf("+HTTPACTION:") < 0) {
-    modemWaitToken("+HTTPACTION:", 30000, &actionResp);
+    modemWaitToken("+HTTPACTION:", 60000, &actionResp);
   }
 
   const int code = parseHttpActionCode(actionResp);
@@ -429,7 +556,37 @@ bool modemHttpPost(const uint8_t* data, size_t len, int* httpCode) {
   return code >= 200 && code < 400;
 }
 
-}  // namespace
+bool modemHttpsPostJson(const char* url, const char* bearer, const uint8_t* data,
+                        size_t len, int* httpCode, String* bodyOut) {
+  // ESP mbedTLS + 模块明文 TCP（绕过 A7670 内置 HTTPS 715）
+  return modemEspTlsHttpsPost(url, bearer, data, len, httpCode, bodyOut);
+}
+
+void drainRx() { modemDrainRx(); }
+
+bool sendAt(const char* cmd, uint32_t timeoutMs, String* out) {
+  return modemSendAt(cmd, timeoutMs, out);
+}
+
+bool waitToken(const char* token, uint32_t timeoutMs, String* out) {
+  BusGuard guard(timeoutMs + 5000);
+  if (!guard) {
+    return false;
+  }
+  return modemWaitToken(token, timeoutMs, out);
+}
+
+bool ensureNetwork() {
+  BusGuard guard;
+  if (!guard) {
+    return false;
+  }
+  return modemEnsureNetwork();
+}
+
+}  // namespace modem_at
+
+using namespace modem_at;
 
 void prepareModemPins() { modemPreparePins(); }
 
@@ -499,6 +656,10 @@ bool Modem::scanUartPins() {
   Serial.println("[NET] scan skipped (mock modem)");
   return false;
 #else
+  BusGuard guard;
+  if (!guard) {
+    return false;
+  }
   Serial.println("[NET] ==== UART full pin scan start ====");
   Serial.println("[NET] tip: 主控板红/蓝灯≠4G模块灯；模块常只有电源红灯");
   modemPowerOn();
@@ -598,6 +759,25 @@ bool Modem::scanUartPins() {
 #endif
 }
 
+bool Modem::dumpFirmwareInfo() {
+  ensureInitialized();
+  if (!cellReady_) {
+    Serial.println("[NET] FW: UART not ready");
+    return false;
+  }
+  BusGuard guard;
+  if (!guard) {
+    return false;
+  }
+  Serial.println("[NET] ==== modem firmware (ATI / SIMCOMATI) ====");
+  modemSendAt("ATI", 3000);
+  modemSendAt("AT+CGMR", 3000);
+  modemSendAt("AT+SIMCOMATI", 5000);
+  Serial.println("[NET] ==== end firmware info ====");
+  Serial.println("[NET] 升级须匹配 Model=A7670G-LABE；勿刷 LASE/LLSE/其它型号包");
+  return true;
+}
+
 bool Modem::runDiagnostics() {
   ensureInitialized();
   if (!cellReady_) {
@@ -609,8 +789,13 @@ bool Modem::runDiagnostics() {
       return false;
     }
   }
+  BusGuard guard;
+  if (!guard) {
+    return false;
+  }
   Serial.println("[NET] diag: SIM/network probe (蜗牛→按IMSI选APN, 默认cmiot)...");
   modemSendAt("ATI", 3000);
+  modemSendAt("AT+SIMCOMATI", 5000);
   modemSendAt("AT+CMEE=2", 2000);
   kNetworkOpen = false;
   const bool net = modemEnsureNetwork();
@@ -664,13 +849,24 @@ bool Modem::beginHardware() {
   pinMode(pins::MODEM_RX, INPUT);
   modemPowerOn();
   cellReady_ = false;
+#if USE_WIFI_FALLBACK
   wifiBegin();
   wifiEnsureConnected();
+#endif
   Serial.printf("[NET] status: WiFi=%s 4G=%s\n",
                 isWifiReady() ? "OK" : "FAIL", isCellReady() ? "OK" : "FAIL");
   return isReady();
 #else
+#if USE_WIFI_FALLBACK
   wifiBegin();
+#else
+  wifiReady_ = false;
+  Serial.println("[NET] WiFi disabled (NET_CELL_ONLY) — AI/upload via 4G only");
+#if defined(ESP32)
+  // 彻底关掉 WiFi 射频，省电且避免误连
+  WiFi.mode(WIFI_OFF);
+#endif
+#endif
   if (cellReady_) {
     Serial.println("[NET] A7670G already ready (from UART scan)");
     Serial.printf("[NET] status: WiFi=%s 4G=%s\n",
@@ -680,6 +876,11 @@ bool Modem::beginHardware() {
   Serial.println("[NET] FS-MCore-A7670G init...");
   Serial.printf("[NET] UART TX=%d RX=%d PEN=%d PWK=%d APN=%s\n", pins::MODEM_TX,
                 pins::MODEM_RX, pins::MODEM_PEN, pins::MODEM_PWRKEY, CELL_APN);
+  BusGuard guard;
+  if (!guard) {
+    cellReady_ = false;
+    return false;
+  }
   modemPowerOn();
   bool ok = modemProbeAll();
 #if MODEM_PULSE_PWRKEY
@@ -703,12 +904,16 @@ bool Modem::beginHardware() {
     (void)modemWaitSimReady(20000);
     modemSendAt("AT+CSQ", 3000);
     modemSendAt("AT+COPS?", 5000);
+    // 开机即拨号，后面扫题更快
+    (void)modemEnsureNetwork();
   }
+#if USE_WIFI_FALLBACK
   if (streamingApMode_) {
     wifiReady_ = true;
   } else {
     wifiEnsureConnected();
   }
+#endif
   Serial.printf("[NET] status: WiFi=%s 4G=%s\n",
                 isWifiReady() ? "OK" : "FAIL", isCellReady() ? "OK" : "FAIL");
   return isReady();
@@ -727,6 +932,7 @@ UploadResult Modem::uploadWithFailover(const uint8_t* data, size_t len) {
   UploadResult r;
   ensureInitialized();
 
+#if USE_WIFI_FALLBACK
   const bool wifiConfigured =
       strlen(WIFI_SSID) > 0 && strcmp(WIFI_SSID, "YOUR_SSID") != 0;
 
@@ -749,6 +955,7 @@ UploadResult Modem::uploadWithFailover(const uint8_t* data, size_t len) {
     r.error = r.error ? r.error : "upload failed";
     return r;
   }
+#endif
   if (isCellReady()) {
     Serial.println("[NET] upload via 4G");
     r = uploadHardware(data, len);
@@ -756,28 +963,14 @@ UploadResult Modem::uploadWithFailover(const uint8_t* data, size_t len) {
     if (r.ok) {
       return r;
     }
+#if !NET_PREFER_WIFI
     if (wifiEnsureConnected()) {
       Serial.println("[NET] failover to WiFi");
       r = uploadWifi(data, len);
       r.via = "WiFi";
       return r;
     }
-    return r;
-  }
-#else
-  if (isCellReady()) {
-    Serial.println("[NET] upload via 4G");
-    r = uploadHardware(data, len);
-    r.via = "SIM";
-    if (r.ok) {
-      return r;
-    }
-    if (wifiEnsureConnected()) {
-      Serial.println("[NET] failover to WiFi");
-      r = uploadWifi(data, len);
-      r.via = "WiFi";
-      return r;
-    }
+#endif
     return r;
   }
   if (wifiEnsureConnected()) {
@@ -786,11 +979,116 @@ UploadResult Modem::uploadWithFailover(const uint8_t* data, size_t len) {
     r.via = "WiFi";
     return r;
   }
+#else
+  // 纯 4G
+  if (isCellReady()) {
+    Serial.println("[NET] upload via 4G");
+    r = uploadHardware(data, len);
+    r.via = "SIM";
+    return r;
+  }
 #endif
 
   r.ok = false;
   r.error = "no network";
   r.via = nullptr;
+  return r;
+}
+
+bool Modem::ensureCellNetwork() {
+  ensureInitialized();
+  if (!cellReady_) {
+    return false;
+  }
+  if (radioSleeping_) {
+    return wakeRadio();
+  }
+  BusGuard guard;
+  if (!guard) {
+    return false;
+  }
+  return modemEnsureNetwork();
+}
+
+bool Modem::sleepRadio() {
+#if USE_MOCK_MODEM
+  radioSleeping_ = true;
+  Serial.println("[NET] mock radio sleep");
+  return true;
+#else
+  ensureInitialized();
+  if (!cellReady_) {
+    return false;
+  }
+  if (radioSleeping_) {
+    return true;
+  }
+  BusGuard guard;
+  if (!guard) {
+    return false;
+  }
+  Serial.println("[NET] radio sleep AT+CFUN=0");
+  modemSendAt("AT+CFUN=0", 15000);
+  kNetworkOpen = false;
+  radioSleeping_ = true;
+  return true;
+#endif
+}
+
+bool Modem::wakeRadio() {
+#if USE_MOCK_MODEM
+  radioSleeping_ = false;
+  return true;
+#else
+  ensureInitialized();
+  if (!cellReady_) {
+    return false;
+  }
+  BusGuard guard;
+  if (!guard) {
+    return false;
+  }
+  if (!radioSleeping_) {
+    return modemEnsureNetwork();
+  }
+  Serial.println("[NET] radio wake AT+CFUN=1");
+  if (!modemSendAt("AT+CFUN=1", 20000)) {
+    Serial.println("[NET] CFUN=1 failed");
+    return false;
+  }
+  radioSleeping_ = false;
+  delay(2000);
+  return modemEnsureNetwork();
+#endif
+}
+
+CellHttpResult Modem::httpsPostJson(const char* url, const char* bearerToken,
+                                    const uint8_t* json, size_t jsonLen) {
+  CellHttpResult r;
+  ensureInitialized();
+  if (!cellReady_) {
+    r.error = "modem not ready";
+    return r;
+  }
+  // 整段 TLS/CIP 会话占住总线，防止串口 DIAG/HTEST 插入
+  BusGuard guard;
+  if (!guard) {
+    r.error = "modem busy";
+    return r;
+  }
+  int code = 0;
+  String body;
+  Serial.printf("[NET] 4G ESP-TLS POST %u bytes → %s\n",
+                static_cast<unsigned>(jsonLen), url ? url : "?");
+  if (!modemHttpsPostJson(url, bearerToken, json, jsonLen, &code, &body)) {
+    r.httpCode = code;
+    r.body = body;
+    r.error = (code > 0) ? "4G ESP-TLS HTTP error" : "4G ESP-TLS failed";
+    return r;
+  }
+  r.httpCode = code;
+  r.body = body;
+  r.ok = true;
   return r;
 }
 
@@ -812,6 +1110,11 @@ UploadResult Modem::uploadHardware(const uint8_t* data, size_t len) {
   UploadResult r;
   if (!cellReady_) {
     r.error = "modem not ready";
+    return r;
+  }
+  BusGuard guard;
+  if (!guard) {
+    r.error = "modem busy";
     return r;
   }
   if (!modemEnsureNetwork()) {

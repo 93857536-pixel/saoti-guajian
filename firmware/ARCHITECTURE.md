@@ -27,7 +27,8 @@ main.cpp
   ├─ Modem       A7670 AT + SoftAP WiFi 双路径
   ├─ Button      GPIO0
   ├─ UsbStream   SC 协议推流
-  └─ StreamServer SoftAP MJPEG :80
+  ├─ StreamServer SoftAP MJPEG :80
+  └─ ble_gatt    BLE Companion GATT（Saoti-XXXX）
 ```
 
 流程：`Idle → 按键/s → Capture → Upload → Result → Idle`
@@ -43,7 +44,7 @@ main.cpp
 | `esp32s3-devkitc-1-mock` | 全 mock |
 
 ```bash
-cd ~/Documents/saoti-guajian-fw
+cd firmware
 pio run -e esp32s3-devkitc-1 -t upload
 ```
 

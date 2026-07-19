@@ -35,23 +35,28 @@
 #define MODEM_FAST_PROBE 0
 #endif
 
-// ── AI 扫题解题（默认：阿里云百炼通义 VL，OpenAI 兼容接口） ──
+// ── AI 扫题解题（默认：智谱 GLM-V，OpenAI 兼容接口） ──
 #ifndef USE_OPENAI_SOLVER
 #define USE_OPENAI_SOLVER 1
 #endif
 #ifndef OPENAI_BASE_URL
 #define OPENAI_BASE_URL \
-  "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+  "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 #endif
+// 首选视觉模型；额度不足时固件会自动切换到其它 VL 模型（见 solver 模型池）
 #ifndef OPENAI_MODEL
-#define OPENAI_MODEL "qwen-vl-plus"
+#define OPENAI_MODEL "glm-4v-flash"
 #endif
 #ifndef OPENAI_TIMEOUT_MS
 #define OPENAI_TIMEOUT_MS 60000
 #endif
+// 单次扫题最多尝试几个视觉模型（遇额度耗尽自动换）
+#ifndef OPENAI_MODEL_MAX_TRIES
+#define OPENAI_MODEL_MAX_TRIES 6
+#endif
 
-// 蜗牛移动：品牌≠制式。本机卡实测 IMSI 46000…/ICCID 898600… = 中国移动物联
-// 固件会按 IMSI 自动选 APN；默认 cmiot（移动物联），备用 cmmtm/cmnet
+// 蜗牛移动：品牌≠制式。本机卡实测 IMSI 46001…/ICCID 898601… = 中国联通
+// 固件会按 IMSI 自动选 APN；默认 wonet（联通），备用 cmiot/cmnet 等
 // 电池电量：分压比 / 空满电压（磷酸铁锂请改阈值）
 #ifndef BAT_DIVIDER_RATIO
 #define BAT_DIVIDER_RATIO 2.0f  // Vbat = Vadc * ratio（100k+100k）
@@ -62,28 +67,50 @@
 #ifndef BAT_V_FULL
 #define BAT_V_FULL 4.20f
 #endif
+// 无独立 CHG 脚：进入「充电中」须看到充电/5V 轨；电压上升只用于维持状态。
+// 勿用「满电电压≥4.15」或短暂回升单独进入充电——扫题后负载卸掉会误报。
+#ifndef BAT_V_CHARGE_RISE
+#define BAT_V_CHARGE_RISE 0.050f
+#endif
+#ifndef BAT_CHARGE_RISE_COUNT
+#define BAT_CHARGE_RISE_COUNT 4
+#endif
+// 仅当分压还原电压明显高于锂电满电+噪声时才判充电轨。
+// 7.0 太低：ADC 顶格≈3.3V×2=6.6～7.0 会误报；真接 5V 分压通常 ≥8V。
+#ifndef BAT_RATIOED_CHARGE_RAIL
+#define BAT_RATIOED_CHARGE_RAIL 8.0f
+#endif
 
 #ifndef CELL_APN
-#define CELL_APN "cmiot"
+#define CELL_APN "wonet"
 #endif
 #ifndef CELL_APN_FALLBACKS
-#define CELL_APN_FALLBACKS "cmmtm", "cmnet", "wonet", "3gnet", "scuiot", "ctnet"
+#define CELL_APN_FALLBACKS "cmiot", "cmmtm", "cmnet", "3gnet", "scuiot", "ctnet"
 #endif
 
+// 组网策略：默认只用 4G（不再连家用 WiFi / SoftAP）
+#ifndef NET_CELL_ONLY
+#define NET_CELL_ONLY 1
+#endif
 #ifndef NET_AUTO_SWITCH
-#define NET_AUTO_SWITCH 1
+#define NET_AUTO_SWITCH 0
 #endif
 #ifndef NET_PREFER_WIFI
-#define NET_PREFER_WIFI 1
+#define NET_PREFER_WIFI 0
 #endif
 #ifndef WIFI_CONNECT_TIMEOUT_MS
 #define WIFI_CONNECT_TIMEOUT_MS 15000
 #endif
+#if NET_CELL_ONLY
+#undef USE_WIFI_FALLBACK
+#define USE_WIFI_FALLBACK 0
+#else
 #ifndef USE_WIFI_FALLBACK
 #define USE_WIFI_FALLBACK NET_AUTO_SWITCH
 #endif
+#endif
 
-// WiFi 来自 secrets.h；空字符串表示未配置
+// WiFi 来自 secrets.h（CELL_ONLY 时忽略）
 #ifndef WIFI_SSID
 #define WIFI_SSID SECRETS_WIFI_SSID
 #endif
@@ -102,12 +129,75 @@
 #ifndef IDLE_BACKLIGHT_MS
 #define IDLE_BACKLIGHT_MS 60000
 #endif
-#define CAPTURE_JPEG_QUALITY 12
+// 空闲后关闭摄像头 + 4G 射频（AT+CFUN=0），按键/扫题时再唤醒
+#ifndef IDLE_PERIPH_SLEEP_MS
+#define IDLE_PERIPH_SLEEP_MS 90000
+#endif
+// 答案页停留（含 SoftAP 看全文）
+#ifndef RESULT_HOLD_MS
+#define RESULT_HOLD_MS 45000
+#endif
+// JPEG 质量：esp32-camera/jpge 数值越小画质越好（文件越大）
+// 现走 ESP-TLS，可比较旧 HTTPDATA 路径放宽体积
+#if NET_CELL_ONLY
+#ifndef CAPTURE_JPEG_QUALITY
+#define CAPTURE_JPEG_QUALITY 8
+#endif
+#else
+#ifndef CAPTURE_JPEG_QUALITY
+#define CAPTURE_JPEG_QUALITY 8
+#endif
+#endif
 #define FRAME_WIDTH 640
 #define FRAME_HEIGHT 480
+// ESP-TLS 分片发送，可放宽；约 28KB JPEG 利于 OCR 文字边缘
+#ifndef CELL_AI_MAX_JPEG
+#define CELL_AI_MAX_JPEG 28000
+#endif
 
+// 扫题捕获分辨率：1=优先 HVGA(480x320)，失败回退 QVGA（VGA 在本板易卡死）
+// 智谱对 OV5640 硬件 JPEG 兼容性差；QVGA + 软重编码更稳（HVGA 软解易卡）
+#ifndef CAPTURE_USE_HVGA
+#define CAPTURE_USE_HVGA 0
+#endif
+
+// 拍照前 OV5640 自动对焦（需模组 AF-VCC 接 3.3V，微雪 C 型通常已接）
+#ifndef CAM_AUTO_FOCUS
+#define CAM_AUTO_FOCUS 1
+#endif
+
+// 拍照自动补光（微雪 C 型镜头两侧灯，经 OV5640 STROBE）
+#ifndef CAM_AUTO_FLASH
+#define CAM_AUTO_FLASH 1
+#endif
+// 场景平均亮度 0x56A1 低于此值 → 开灯（AEC 未跟上的偏暗）
+#ifndef CAM_FLASH_AVG_THRESHOLD
+#define CAM_FLASH_AVG_THRESHOLD 40
+#endif
+// AGC 增益低字节 0x350B 高于此值 → 开灯（AEC 已拉满，环境仍偏暗）
+#ifndef CAM_FLASH_GAIN_THRESHOLD
+#define CAM_FLASH_GAIN_THRESHOLD 0x28
+#endif
+
+// SoftAP/STA 预览：纯 4G 模式默认关闭（可用 USB 串口推流）
 #ifndef STREAM_ENABLE
+#if NET_CELL_ONLY
+#define STREAM_ENABLE 0
+#else
 #define STREAM_ENABLE 1
+#endif
+#endif
+// BLE Companion（须在 ANSWER_SOFTAP 之前定义）
+#ifndef BLE_GATT_ENABLE
+#define BLE_GATT_ENABLE 1
+#endif
+// 解题成功后临时开 SoftAP；启用 BLE 时默认关（WiFi AP 会冲掉 BLE 广播）
+#ifndef ANSWER_SOFTAP_ENABLE
+#if BLE_GATT_ENABLE
+#define ANSWER_SOFTAP_ENABLE 0
+#else
+#define ANSWER_SOFTAP_ENABLE 1
+#endif
 #endif
 #ifndef STREAM_PORT
 #define STREAM_PORT 80
@@ -134,10 +224,14 @@
 #define USB_STREAM_COLORBAR_TEST 0
 #endif
 #ifndef USB_STREAM_AEC_VALUE
-#define USB_STREAM_AEC_VALUE 1500
+#define USB_STREAM_AEC_VALUE 1800
 #endif
 #ifndef USB_STREAM_SKIP_MODEM_ON_BOOT
 #define USB_STREAM_SKIP_MODEM_ON_BOOT 0
 #endif
 
 #define LOG_TAG "SAOTI"
+
+#ifndef FW_VERSION
+#define FW_VERSION "1.1.0-ble"
+#endif

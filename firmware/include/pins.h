@@ -51,7 +51,8 @@ constexpr int BUTTON = 0;
 
 // ── 电池电压 ADC（需分压，见 WIRING.md）──────────────────
 // 电池+ → 100k → GPIO14 → 100k → GND（分压比 2）
-// ADC1 脚位已被屏/摄像占满，故用 ADC2 的 GPIO14
+// ADC1(GPIO1–10) 已被屏/摄像占满，只能用 ADC2 的 GPIO14。
+// SoftAP 期间固件冻结采样（见 battery::setAdcFrozen）。
 constexpr int BAT_ADC = 14;
 
 }  // namespace pins
