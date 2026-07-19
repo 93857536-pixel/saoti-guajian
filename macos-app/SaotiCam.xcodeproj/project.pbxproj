@@ -18,6 +18,7 @@
 		4E93A67A4469A9920E000279 /* SerialStreamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B802B7E05B537E0A4E2A4E1F /* SerialStreamClient.swift */; };
 		6D84EFC71209D966901F5B66 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7676F48EF810A9CC673EAC3B /* DashboardView.swift */; };
 		8770A00CB40F403645673A80 /* PlatformImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19D0F281F7C95D9F142D004 /* PlatformImage.swift */; };
+		8C51E44C41ED0C14F296BDAD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 452C510E000498D7A805862C /* Assets.xcassets */; };
 		AD63D3968CDC75718FDB05BB /* CameraStreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97D20DBD75F33F8C892917A4 /* CameraStreamView.swift */; };
 		B6B9E9BD19B405EDDB93E2F4 /* CellularConfigView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565191EEC081066ED8D9A1F8 /* CellularConfigView.swift */; };
 		D50CABD87EFD44043878576D /* DeviceStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F3682C7651C922F3EAFE60B /* DeviceStatus.swift */; };
@@ -29,6 +30,7 @@
 		14BDDE8EFB556E6B72A53518 /* MjpegStreamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MjpegStreamClient.swift; sourceTree = "<group>"; };
 		185AF8B60276556CB7D7B9F7 /* FrameDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameDisplayView.swift; sourceTree = "<group>"; };
 		3F3682C7651C922F3EAFE60B /* DeviceStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceStatus.swift; sourceTree = "<group>"; };
+		452C510E000498D7A805862C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		45B3EA855DA739268C26C0DB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		565191EEC081066ED8D9A1F8 /* CellularConfigView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CellularConfigView.swift; sourceTree = "<group>"; };
 		5A7454737A7EEA362AE8B414 /* NativeImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeImageView.swift; sourceTree = "<group>"; };
@@ -58,6 +60,7 @@
 		AFD2B14C233605AE2F6E6B3C /* SaotiCam */ = {
 			isa = PBXGroup;
 			children = (
+				452C510E000498D7A805862C /* Assets.xcassets */,
 				97D20DBD75F33F8C892917A4 /* CameraStreamView.swift */,
 				565191EEC081066ED8D9A1F8 /* CellularConfigView.swift */,
 				F3C11530463A84A3AF2BE31A /* ContentView.swift */,
@@ -95,6 +98,7 @@
 			buildConfigurationList = 540E13466FD10E9FC5A7769B /* Build configuration list for PBXNativeTarget "SaotiCam" */;
 			buildPhases = (
 				F83554EE8A94141C8D5CD8B1 /* Sources */,
+				D2B15C0B6ABC4374D882995E /* Resources */,
 			);
 			buildRules = (
 			);
@@ -140,6 +144,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D2B15C0B6ABC4374D882995E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8C51E44C41ED0C14F296BDAD /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		F83554EE8A94141C8D5CD8B1 /* Sources */ = {
