@@ -91,7 +91,7 @@ const char* sensorName() {
 }
 #endif
 
-#if USB_STREAM_ENABLE
+#if !USE_MOCK_CAMERA && USB_STREAM_ENABLE
 camera_config_t buildUsbStreamCameraConfig() {
   camera_config_t config = buildCameraConfig();
   config.frame_size = FRAMESIZE_QQVGA;
