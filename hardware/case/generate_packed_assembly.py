@@ -2,14 +2,12 @@
 """
 生成「3D 打印外壳合盖 + 全部配件就位」装配模型。
 
-输出（cad/stl/）:
-  saoti_packed_assembly.stl     — 合盖整机（壳半剖，能看见内部）
-  saoti_packed_internals.stl    — 仅内部配件（无壳，便于看摆位）
-  saoti_packed_assembly.step    — STEP（可用 FreeCAD/Fusion 打开）
-  （不再生成 packed_closed）
+输出（stl/，可 gitignore，本地预览用）:
+  saoti_packed_assembly.stl / .step
+  saoti_packed_internals.stl
 
 用法:
-  python3 cad/generate_packed_assembly.py
+  python3 generate_packed_assembly.py
 """
 
 from __future__ import annotations
@@ -18,24 +16,24 @@ from pathlib import Path
 
 import cadquery as cq
 
-# 与 generate_case.py v7.5 保持一致
-OUTER_L = 106.0
-OUTER_W = 140.0
-OUTER_H = 108.0
+# 与 generate_case.py v7.26 紧凑外廓一致
+OUTER_L = 76.0
+OUTER_W = 110.0
+OUTER_H = 58.0
 WALL = 2.0
-CORNER_R = 8.0
-SPLIT_Z = 34.0
-WALL_GAP = 1.0
+CORNER_R = 5.0
+SPLIT_Z = 26.0
+WALL_GAP = 1.5
 INNER_X = OUTER_L / 2 - WALL
 INNER_Y = OUTER_W / 2 - WALL
 
-PWR_LEN_X, PWR_WID_Y, PWR_H = 64.0, 35.8, 20.0
-PWR_CX = -6.0
+PWR_LEN_X, PWR_WID_Y, PWR_H = 63.0, 40.0, 24.0
+PWR_CX = 0.0
 PWR_CY = -INNER_Y + PWR_WID_Y / 2 + WALL_GAP
 
 ESP_LEN_X, ESP_WID_Y = 64.0, 28.4
 ESP_CX = INNER_X - ESP_LEN_X / 2 - WALL_GAP
-ESP_CY = (PWR_CY + PWR_WID_Y / 2) + 18.0 + ESP_WID_Y / 2
+ESP_CY = (PWR_CY + PWR_WID_Y / 2) + 6.0 + ESP_WID_Y / 2
 ESP_BOARD_T = 1.6
 ESP_COMP_H = 10.0  # USB/模组朝后壳外侧
 ESP_PIN_H = 12.0   # 针脚+杜邦朝分型面/前线舱
@@ -44,15 +42,17 @@ LCD_BOARD_W, LCD_BOARD_H, LCD_T = 45.0, 31.0, 1.6  # PCB
 LCD_GLASS = 26.5  # 黑边玻璃外廓约
 LCD_VIEW = 23.4  # 可视区
 LCD_MODULE_T = 3.2  # 玻璃+背光相对 PCB 顶面
-LCD_CX, LCD_CY = 0.0, 44.0
+LCD_CX, LCD_CY = 0.0, INNER_Y - LCD_BOARD_H / 2 - 3.0
 
 CAM_BOARD_W, CAM_BOARD_H, CAM_BOARD_T = 35.7, 23.9, 2.0
-CAM_LENS_H, CAM_D, CAM_SQ = 10.0, 8.0, 10.5
-CAM_CX, CAM_CY = 0.0, 0.0
-CAM_LENS_DX = 8.5  # 镜头偏模组端（+X），排针在 -X
+CAM_LENS_H, CAM_D, CAM_BORE = 10.0, 9.0, 12.5
+CAM_CX = -INNER_X + CAM_BOARD_W / 2 + WALL_GAP
+CAM_CY = (ESP_CY + ESP_WID_Y / 2) + 4.0 + CAM_BOARD_H / 2
+CAM_LENS_DX = -8.5  # 横放：镜头偏 −X，排针 +X
 
 MODEM_W, MODEM_H, MODEM_T = 28.0, 26.0, 12.0
-MODEM_CX, MODEM_CY = -22.0, 36.0
+MODEM_CX = INNER_X - MODEM_W / 2 - WALL_GAP
+MODEM_CY = CAM_CY
 
 ANT_PAD_W, ANT_PAD_H, ANT_PAD_T = 48.0, 14.0, 0.8
 ANT_PAD_CX, ANT_PAD_CY = 0.0, LCD_CY
@@ -140,7 +140,7 @@ def make_components() -> dict[str, cq.Workplane]:
         CAM_CX, CAM_CY, z_cam_board, CAM_BOARD_W, CAM_BOARD_H, CAM_BOARD_T
     )
     parts["cam_square"] = _box(
-        lens_x, lens_y, 0.4, CAM_SQ, CAM_SQ, CAM_LENS_H - 1.5
+        lens_x, lens_y, 0.4, CAM_BORE, CAM_BORE, CAM_LENS_H - 1.5
     )
     parts["cam_lens"] = (
         cq.Workplane("XY")
@@ -284,7 +284,7 @@ def main() -> None:
         "  saoti_packed_assembly.step  STEP，可用 FreeCAD / Fusion 360 打开\n"
         "\n"
         "占位尺寸按实物近似：\n"
-        "  屏 45×31×5  摄像板+镜头  电源 64×35.8×20  ESP 64×28.4+杜邦  4G 28×26×12\n"
+        "  屏 45×31×5  摄像板+镜头  电源 63×40×24  ESP 64×28.4+杜邦  4G 28×26×12\n"
         "颜色区分需用 STEP 或分件 STL；单色 STL 靠形状区分。\n"
         "此文件仅供装配示意，不要直接当打印件。\n",
         encoding="utf-8",

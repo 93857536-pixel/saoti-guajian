@@ -114,8 +114,8 @@ Mac 上等价做法：烧录 `esp32s3-modem-bridge`，用串口监视器发 `AT`
 
 | 模块 | ESP | 功能 |
 |------|-----|------|
-| KEY1 | **GPIO0**（丝印 0 / BOOT） | 短按扫题；长按≈3s 测 AI |
-| KEY2 | **GPIO42** | 短按固定题图测 AI |
+| KEY1 | **GPIO0**（丝印 0 / BOOT） | 短按扫题 |
+| KEY2 | **GPIO42** | 短按切换 **唤醒 / 休眠** |
 | GND | GND | 共地 |
 | （可选）板载 BOOT | — | 与 KEY1 同脚，后壳腰圆孔备用 |
 
@@ -127,9 +127,26 @@ Mac 上等价做法：烧录 `esp32s3-modem-bridge`，用串口监视器发 `AT`
 
 电源开关仍用电池正极拨动开关，与拍照键分开。
 
-可打印文件：[`cad/PRINT.md`](cad/PRINT.md)、[`hardware/case/PRINT.md`](../hardware/case/PRINT.md)。
+可打印文件：[`hardware/case/PRINT.md`](../hardware/case/PRINT.md)（`stl/saoti_front.stl` + `saoti_back.stl`）。
 
-## 6. SoftAP
+## 6. 语音 TTS（UART 中文播报）
+
+推荐 **XFS5152 / SYN6288 同类串口语音合成板 + 小喇叭**（播报扫题答案，非语音识别）。
+
+| 模块 | ESP | 说明 |
+|------|-----|------|
+| RX | **GPIO45**（ESP TX → 模 RX） | 固件 `Serial1`，默认 9600 |
+| BUSY（可选） | **GPIO46** | 忙时高电平；不接则按字数延时分句 |
+| GND | GND | 共地 |
+| VCC | **按模块标称**（多为 5V 或 3.3V） | **勿与摄像头抢弱 3V3**；喇叭接模块功放输出 |
+
+默认固件 `TTS_UTF8=1`（XFS5152 UTF-8）。若是纯 SYN6288 且只要 GBK，编译加 `-DTTS_UTF8=0` 并自行保证文本编码。
+
+串口调试：`SAY=你好` 播报；`TTSSTOP` 停止；`TTS` 查状态。解题成功后自动播报答案；KEY2 休眠会停播。
+
+无模块时可保持接线空置；或 `-DTTS_ENABLE=0` 关掉。
+
+## 7. SoftAP
 
 - SSID：`SaotiCam` / 密码：`saoti1234`
 - 控制台：`http://192.168.4.1/`

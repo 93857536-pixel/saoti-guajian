@@ -13,6 +13,7 @@
 #include "modules/usb_stream.h"
 #include "modules/solver.h"
 #include "modules/ble_gatt.h"
+#include "modules/tts.h"
 #include "serial_lock.h"
 #include "test_question_jpeg.h"
 
@@ -149,6 +150,7 @@ void enterPeriphSleep() {
     return;
   }
   Serial.println("[PWR] peripheral sleep (cam + modem CFUN=0)");
+  tts::stop();
 #if USB_STREAM_ENABLE
   usbStream.setActive(false);
 #endif
@@ -353,6 +355,7 @@ void presentAnswer(const char* answer) {
   result_until = millis() + RESULT_HOLD_MS;
   setState(AppState::ShowResult);
   ble_gatt::notifyAnswerChanged();
+  tts::speak(answer);
 }
 
 void showErrorHold(const char* message) {
@@ -373,7 +376,7 @@ const char* idleHint() {
     return buf;
   }
 #endif
-  return camera.isReady() ? "短按开始扫题" : "短按测试 AI";
+  return camera.isReady() ? "KEY1扫题 KEY2休眠" : "KEY1测AI KEY2休眠";
 }
 
 // 顶部网络条：空闲显示可用链路；扫题时显示实际使用的通道
@@ -725,11 +728,11 @@ void printBootSummary() {
                 modem.isCellReady() ? "OK" : "FAIL",
                 modem.streamingIp().c_str());
   system_ready = display.isReady() && camera.isReady();
-  Serial.println("[APP] cmds: KEY1/s=scan  KEY2/longKEY1/t=AI test  ?=status  NET=4G");
+  Serial.println("[APP] cmds: KEY1=scan  KEY2=wake/sleep  SAY=/TTS  s/t/?/NET");
   if (system_ready) {
-    Serial.println("[APP] ready — KEY1 scan, KEY2 (or long KEY1) AI test");
+    Serial.println("[APP] ready — KEY1 scan, KEY2 wake/sleep, TTS answer");
   } else {
-    Serial.println("[APP] degraded — KEY1/KEY2 use fixed-image AI test");
+    Serial.println("[APP] degraded — KEY1 fixed-AI, KEY2 wake/sleep");
   }
 }
 
@@ -807,6 +810,34 @@ void handleSerialLine(const String& line) {
   if (cmd == "MODEL=reset" || cmd == "model=reset" || cmd == "MODEL=RESET") {
     solverResetModelPool();
     Serial.println(solverModelPoolStatus());
+    return;
+  }
+  if (cmd.startsWith("SAY=") || cmd.startsWith("say=")) {
+    String text = cmd.substring(4);
+    text.trim();
+    if (text.isEmpty()) {
+      Serial.println("{\"type\":\"tts\",\"ok\":false,\"reason\":\"empty\"}");
+      return;
+    }
+    noteUiActivity();
+    tts::speak(text);
+    Serial.printf("{\"type\":\"tts\",\"ok\":true,\"len\":%u,\"ready\":%s}\n",
+                  static_cast<unsigned>(text.length()),
+                  tts::ready() ? "true" : "false");
+    return;
+  }
+  if (cmd == "TTSSTOP" || cmd == "ttsstop" || cmd == "SAYSTOP" ||
+      cmd == "saystop") {
+    tts::stop();
+    Serial.println("{\"type\":\"tts\",\"ok\":true,\"stopped\":true}");
+    return;
+  }
+  if (cmd == "TTS" || cmd == "tts") {
+    Serial.printf(
+        "{\"type\":\"tts\",\"ready\":%s,\"busy\":%s,\"tx\":%d,\"busy_pin\":%d,"
+        "\"utf8\":%d}\n",
+        tts::ready() ? "true" : "false", tts::busy() ? "true" : "false",
+        pins::TTS_TX, pins::TTS_BUSY, TTS_UTF8);
     return;
   }
   if (cmd == "BAT" || cmd == "bat") {
@@ -915,6 +946,105 @@ void handleSerialLine(const String& line) {
     Serial.println("{\"type\":\"flash\",\"on\":false}");
     return;
   }
+  // 导出与扫题/上传同路径的 cloud-safe JPEG（串口 Base64）
+  // 只醒摄像头，不依赖 4G 自检（否则网络差就拍不了调试图）
+  if (cmd == "JPG" || cmd == "jpg" || cmd == "SNAP" || cmd == "snap") {
+    if (gPipelineBusyFlag || state != AppState::Idle) {
+      Serial.println("{\"type\":\"jpg\",\"ok\":false,\"reason\":\"busy\"}");
+      return;
+    }
+    noteUiActivity();
+    display.setBacklight(true);
+    if (camera.isSleeping()) {
+      if (!camera.wake()) {
+        Serial.println("{\"type\":\"jpg\",\"ok\":false,\"reason\":\"cam wake fail\"}");
+        return;
+      }
+    }
+    if (!camera.isReady()) {
+      Serial.println("{\"type\":\"jpg\",\"ok\":false,\"reason\":\"camera offline\"}");
+      return;
+    }
+    PipelineGuard busyGuard;
+#if USB_STREAM_ENABLE
+    const bool resumeUsb = usbStream.isActive();
+    usbStream.setActive(false);
+#endif
+#if !USE_MOCK_CAMERA
+    camera.setStreamingPaused(true);
+#endif
+    delay(250);
+    const CaptureResult cap = camera.capture();
+#if !USE_MOCK_CAMERA
+    camera.setStreamingPaused(false);
+#endif
+#if USB_STREAM_ENABLE
+    if (resumeUsb) {
+      usbStream.setActive(true);
+    }
+#endif
+    if (!cap.ok || cap.jpeg.size() < 800) {
+      Serial.printf(
+          "{\"type\":\"jpg\",\"ok\":false,\"error\":\"%s\",\"len\":%u}\n",
+          cap.error ? cap.error : "capture failed",
+          static_cast<unsigned>(cap.jpeg.size()));
+      return;
+    }
+    static const char kB64[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    Serial.printf("[JPG] BEGIN len=%u\n",
+                  static_cast<unsigned>(cap.jpeg.size()));
+    SerialLock::lock();
+    char line[77];
+    size_t col = 0;
+    auto flushLine = [&]() {
+      if (col == 0) {
+        return;
+      }
+      line[col] = 0;
+      Serial.println(line);
+      col = 0;
+    };
+    auto putChar = [&](char c) {
+      line[col++] = c;
+      if (col >= 76) {
+        flushLine();
+      }
+    };
+    const uint8_t* p = cap.jpeg.data();
+    const size_t n = cap.jpeg.size();
+    size_t i = 0;
+    while (i + 2 < n) {
+      const uint32_t v = (static_cast<uint32_t>(p[i]) << 16) |
+                         (static_cast<uint32_t>(p[i + 1]) << 8) | p[i + 2];
+      i += 3;
+      putChar(kB64[(v >> 18) & 63]);
+      putChar(kB64[(v >> 12) & 63]);
+      putChar(kB64[(v >> 6) & 63]);
+      putChar(kB64[v & 63]);
+    }
+    if (i + 1 == n) {
+      const uint32_t v = static_cast<uint32_t>(p[i]) << 16;
+      putChar(kB64[(v >> 18) & 63]);
+      putChar(kB64[(v >> 12) & 63]);
+      putChar('=');
+      putChar('=');
+    } else if (i + 2 == n) {
+      const uint32_t v = (static_cast<uint32_t>(p[i]) << 16) |
+                         (static_cast<uint32_t>(p[i + 1]) << 8);
+      putChar(kB64[(v >> 18) & 63]);
+      putChar(kB64[(v >> 12) & 63]);
+      putChar(kB64[(v >> 6) & 63]);
+      putChar('=');
+    }
+    flushLine();
+    SerialLock::unlock();
+    Serial.println("[JPG] END");
+    Serial.printf("{\"type\":\"jpg\",\"ok\":true,\"len\":%u}\n",
+                  static_cast<unsigned>(cap.jpeg.size()));
+    return;
+  }
+
   if (cmd == "FLASHDIAG" || cmd == "flashdiag") {
     noteUiActivity();
     if (camera.isSleeping()) {
@@ -1102,6 +1232,7 @@ void setup() {
   button.begin(pins::BUTTON);
   button2.begin(pins::BUTTON2);
   battery::begin();
+  tts::begin();
   solverBegin();
   solverSetModem(&modem);
   display.begin();
@@ -1193,6 +1324,7 @@ void loop() {
   button.update();
   button2.update();
   ble_gatt::loop();
+  tts::loop();
 
   if (appConsumeWakeRequest()) {
     (void)wakePeripherals("ble");
@@ -1261,11 +1393,22 @@ void loop() {
       setState(AppState::Idle);
     }
   } else if (state == AppState::Idle) {
-    // KEY1/GPIO0：扫题；KEY2/GPIO42：固定题测 AI；KEY1 长按仍可测 AI
-    if (button2.shortPressEdge() || button.longPressEdge()) {
-      Serial.println("[APP] KEY2 / long KEY1 -> fixed-image AI test");
-      runFixedImageSolvePipeline();
-    } else if (button.shortPressEdge()) {
+    // KEY1/GPIO0：扫题；KEY2/GPIO42：唤醒 ↔ 休眠
+    if (button2.shortPressEdge() || button2.longPressEdge()) {
+      if (periphSleeping()) {
+        Serial.println("[APP] KEY2 -> wake");
+        if (!wakePeripherals("key2")) {
+          showErrorHold("wake failed");
+        } else {
+          showIdle();
+        }
+      } else {
+        Serial.println("[APP] KEY2 -> sleep");
+        enterPeriphSleep();
+        display.show(UiScreen::Idle, "已休眠 · KEY2唤醒");
+      }
+    } else if (button.shortPressEdge() || button.longPressEdge()) {
+      Serial.println("[APP] KEY1 -> scan");
       triggerScanOrTest();
     } else if (appConsumeFixedAiTestRequest()) {
       runFixedImageSolvePipeline();
@@ -1314,15 +1457,10 @@ void loop() {
       serialLine = "";
       continue;
     }
-    // 仅无歧义的单字符即时命令；C/M 等必须等换行，避免与 CTEST/MODEL 冲突
+    // 仅无歧义单字符即时命令。勿把 s/t 放这里，否则 TTS/SAY= 会被吞掉
     if (serialLine.length() == 0 &&
-        (c == 'V' || c == 'v' || c == 's' || c == 'S' || c == 't' || c == 'T' ||
-         c == '?')) {
-      if ((c == 's' || c == 'S') && state == AppState::Idle) {
-        triggerScanOrTest();
-      } else if ((c == 't' || c == 'T') && state == AppState::Idle) {
-        runFixedImageSolvePipeline();
-      } else if (c == 'V') {
+        (c == 'V' || c == 'v' || c == '?')) {
+      if (c == 'V') {
         noteUiActivity();
         usbStream.setActive(true);
       } else if (c == 'v') {
@@ -1334,7 +1472,7 @@ void loop() {
       }
       continue;
     }
-    if (serialLine.length() < 64) {
+    if (serialLine.length() < 512) {
       serialLine += c;
     }
   }

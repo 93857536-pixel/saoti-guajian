@@ -43,16 +43,16 @@
 #define OPENAI_BASE_URL \
   "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 #endif
-// 首选视觉模型；额度不足时固件会自动切换到其它 VL 模型（见 solver 模型池）
+// 首选视觉模型：付费最强 GLM-4.6V；用不了直接换 glm-4v-flash
 #ifndef OPENAI_MODEL
-#define OPENAI_MODEL "glm-4v-flash"
+#define OPENAI_MODEL "glm-4.6v"
 #endif
 #ifndef OPENAI_TIMEOUT_MS
 #define OPENAI_TIMEOUT_MS 60000
 #endif
-// 单次扫题最多尝试几个视觉模型（遇额度耗尽自动换）
+// 单次扫题最多尝试几个视觉模型（遇额度耗尽/失败自动换）
 #ifndef OPENAI_MODEL_MAX_TRIES
-#define OPENAI_MODEL_MAX_TRIES 6
+#define OPENAI_MODEL_MAX_TRIES 2
 #endif
 
 // 蜗牛移动：品牌≠制式。本机卡实测 IMSI 46001…/ICCID 898601… = 中国联通
@@ -257,6 +257,22 @@
 #endif
 #ifndef USB_STREAM_SKIP_MODEM_ON_BOOT
 #define USB_STREAM_SKIP_MODEM_ON_BOOT 0
+#endif
+
+// UART 中文 TTS（播报扫题答案）。默认开；无模块时串口仍可 SAY= 调试（无声）
+#ifndef TTS_ENABLE
+#define TTS_ENABLE 1
+#endif
+#ifndef TTS_BAUD
+#define TTS_BAUD 9600
+#endif
+// 1=XFS5152 UTF-8（推荐，答案为 UTF-8）；0=SYN6288 原始字节（需自行 GBK）
+#ifndef TTS_UTF8
+#define TTS_UTF8 1
+#endif
+// BUSY 脚：1=忙时高电平（常见）；0=忙时低
+#ifndef TTS_BUSY_ACTIVE_HIGH
+#define TTS_BUSY_ACTIVE_HIGH 1
 #endif
 
 #define LOG_TAG "SAOTI"

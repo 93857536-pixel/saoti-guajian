@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 """
-扫题挂件外壳 v7.5 — 2 位独立按键模块开孔
+扫题挂件外壳 v7.36 — 全检后卡勾外壁余量≥0.5
 
-v7.3：后仓净高≥70mm、20cm 杜邦。
-v7.4：曾按单颗 6×6 开孔（已废弃）。
-v7.5：天猫常见「2位独立按键模块」整板嵌入左壁（双键窗 + PCB 凹座）。
-
-摆法：
-  - 电源贴底，USB-C 出后壳底边
-  - ESP 靠右，USB-C 出后壳右侧壁
-  - BOOT 后壳对准 ESP；双键模块在左壁
-  - 4G 左上；屏/摄在前壳
+v7.6～v7.35：见历史。
+v7.36：卡勾尖距外表面留壁 ≥0.5mm（原 0.45）。
 
 用法:
   python3 generate_case.py
@@ -18,117 +11,144 @@ v7.5：天猫常见「2位独立按键模块」整板嵌入左壁（双键窗 + 
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import cadquery as cq
 
-# ---------- 外廓 ----------
-OUTER_L = 106.0  # X：ESP64 贴右后两侧杜邦/余量
-OUTER_W = 140.0  # Y：屏/摄缝 + 电源/ESP
-# Z：前壳放屏/摄；后仓须塞下「开发板+杜邦立起+杂线」≥70mm
-OUTER_H = 108.0
+# ---------- 外廓（刚好装下 + 少量容错）----------
+OUTER_L = 76.0
+OUTER_W = 110.0
+OUTER_H = 58.0
 WALL = 2.0
-CORNER_R = 8.0
-LIP = 1.6
-SPLIT_Z = 34.0  # 前壳深保持；加高全给后仓
-# 通用单边间隙（FDM 收缩/大象脚）；口袋另加 POCKET
-TOL = 0.45
-POCKET = 1.2  # 板件凹槽相对名义尺寸的总加量（约每边 0.6）
-WALL_GAP = 1.0  # 大板与内壁最小空隙（勿 <0.8）
-BACK_STACK_H = 70.0  # 后仓目标净高（开发板栈）
-CABLE_LEN = 200.0  # 母对母杜邦标称长度
-CABLE_BUDGET = 190.0  # 设计上限（留 ≥10mm 弯折；屏优先走左侧更短）
+CORNER_R = 5.0
+LIP = 2.2
+# 合盖止口：外圈留壁 + 前唇/后槽间隙（槽圆角 = CORNER_R − 留壁，避免四角削薄）
+MIN_RIM_WALL = 0.8  # ≥0.5；直边与圆角处最小壁厚
+LIP_GROOVE_CLEAR = 0.35  # 前止口外沿相对后槽单边间隙
+SPLIT_Z = 26.0  # 前壳；后壳 32
+TOL = 0.60
+POCKET = 1.6
+WALL_GAP = 1.5
+BACK_STACK_H = 30.0  # 电源 24 + 余量
+CABLE_LEN = 200.0
+CABLE_BUDGET = 190.0
 
-INNER_X = OUTER_L / 2 - WALL  # 51
-INNER_Y = OUTER_W / 2 - WALL  # 68
+INNER_X = OUTER_L / 2 - WALL
+INNER_Y = OUTER_W / 2 - WALL
 
-# ---------- 卡扣（略减咬合 + 槽位加余量，PETG 更易按入）----------
-CLIP_W = 12.0
-CLIP_T = 1.3
-CLIP_H = 3.4
-HOOK = 0.95
-CLIP_SLOT_EXTRA = 0.35  # 槽相对勾的额外单边间隙
+# 止口外廓（相对外壳外尺寸内缩），圆角等距偏移
+_GROOVE_L = OUTER_L - 2 * MIN_RIM_WALL
+_GROOVE_W = OUTER_W - 2 * MIN_RIM_WALL
+_GROOVE_R = max(0.5, CORNER_R - MIN_RIM_WALL)
+_LIP_OUT_L = _GROOVE_L - 2 * LIP_GROOVE_CLEAR
+_LIP_OUT_W = _GROOVE_W - 2 * LIP_GROOVE_CLEAR
+_LIP_OUT_R = max(0.5, _GROOVE_R - LIP_GROOVE_CLEAR)
+_LIP_RING_T = 2.2
+_LIP_IN_L = _LIP_OUT_L - 2 * _LIP_RING_T
+_LIP_IN_W = _LIP_OUT_W - 2 * _LIP_RING_T
+
+CLIP_W = 10.0
+CLIP_T = 1.6
+CLIP_H = 5.0
+HOOK = 0.90  # 勾尖；须满足 WALL−EMBED−HOOK ≥ 0.5
+CLIP_SLOT_EXTRA = 0.15
+CLIP_EMBED = 0.55  # 腔内筋与内壁重叠，不留缝
+CLIP_RIM_KEEP = 3.0
+CLIP_SEAT = 0.30
+CLIP_PILLAR_W = 2.2
+MIN_HOOK_SKIN = 0.5  # 勾尖到外表面最小留壁
+_yw = INNER_Y - CLIP_T / 2 + CLIP_EMBED
+_xw = INNER_X - CLIP_T / 2 + CLIP_EMBED
 CLIPS = [
-    (0.0, OUTER_W / 2 - WALL - 12.0),
-    (0.0, -(OUTER_W / 2 - WALL - 12.0)),
-    (OUTER_L / 2 - WALL - 9.0, 0.0),
-    (-(OUTER_L / 2 - WALL - 9.0), 0.0),
+    (-16.0, _yw, 0.0, 1.0),
+    (16.0, _yw, 0.0, 1.0),
+    (-16.0, -_yw, 0.0, -1.0),
+    (16.0, -_yw, 0.0, -1.0),
+    (_xw, -22.0, 1.0, 0.0),
+    (_xw, 22.0, 1.0, 0.0),
+    (-_xw, -22.0, -1.0, 0.0),
+    (-_xw, 22.0, -1.0, 0.0),
 ]
 
-# ---------- 杜邦 ----------
 DUPONT_STACK_H = 12.0
-DUPONT_SIDE_CLEAR = 18.0  # was 17：侧向出线再松一点
-WIRE_LOFT_Z = 18.0
+DUPONT_SIDE_CLEAR = 8.0
+WIRE_LOFT_Z = 10.0
 CAM_BUNDLE_W = 12.0
 CAM_BUNDLE_T = 10.0
 
-# ---------- 电源：贴底，USB-C 朝 -Y ----------
-PWR_LEN_X = 64.0
-PWR_WID_Y = 35.8
-PWR_H = 20.0
-PWR_CLEAR = 1.2
-# 底边靠近内壁，但留 WALL_GAP 防打印挤死/USB 对不齐
+PWR_LEN_X = 63.0
+PWR_WID_Y = 40.0
+PWR_H = 24.0
+PWR_CLEAR = 2.0
 PWR_CY = -INNER_Y + PWR_WID_Y / 2 + WALL_GAP
-PWR_CX = -6.0  # 略偏左，给右侧 ESP 让位
-USBC_W, USBC_H = 12.0, 5.2  # 插头+护套容错
+PWR_CX = 0.0
+USBC_W, USBC_H = 13.5, 6.2
 USBC_X = PWR_CX
-# 电源在后仓：合盖后 USB≈世界Z58 → 后壳局部Z≈12（从外后脸量）
-USBC_Z_B = 12.0
-# 拨动开关槽加长加宽，兼容偏位
-SW_SLOT_W, SW_SLOT_H = 34.0, 12.0
-SW_CX = PWR_CX + 6.0
-SW_CY = PWR_CY + PWR_WID_Y / 2 - 2.5
+USBC_Z_B = 11.0
 
-# ---------- ESP：64(X)×28.4(Y)，USB 在 +X 短边 → 出右侧壁 ----------
 ESP_LEN_X, ESP_WID_Y = 64.0, 28.4
 ESP_CX = INNER_X - ESP_LEN_X / 2 - WALL_GAP
-# 与电源顶边留 ≥18mm 给杜邦下沿
 _pwr_hi = PWR_CY + PWR_WID_Y / 2
-ESP_CY = _pwr_hi + 18.0 + ESP_WID_Y / 2
-BOOT_D = 6.5  # 指按 + 键位偏差
-BOOT_SLOT_X = 3.0  # 沿 X 再拉长成腰圆，兼容丝印偏差
-# BOOT 在 USB 端（右端）附近；孔开在后壳（器件面朝后）
-BOOT_CX = ESP_CX + ESP_LEN_X / 2 - 8.0
-BOOT_CY = ESP_CY - 6.0
-ESP_USB_W, ESP_USB_H = 12.5, 5.6
-ESP_USB_Z = 9.5
+_ROW_GAP = 6.0
+ESP_CY = _pwr_hi + _ROW_GAP + ESP_WID_Y / 2
+ESP_USB_W, ESP_USB_H = 12.0, 5.0
+ESP_DECK_H = 3.5
+ESP_USB_ABOVE_DECK = 3.5
+ESP_USB_Z = WALL + ESP_DECK_H + ESP_USB_ABOVE_DECK
+ESP_RIM_H = 3.0
+ESP_RIM_T = 1.5
 
-# ---------- 屏 / 摄（相对 v7.2 整体下移，缩短到 ESP 的 20cm 线径）----------
 LCD_BOARD_W, LCD_BOARD_H = 45.0, 31.0
-LCD_VIEW = 24.5  # 可视 23.4，开窗略松
-LCD_CX, LCD_CY = 0.0, 44.0  # was 52：靠近 ESP，线更短
+LCD_AA = 23.40
+LCD_VIEW = LCD_AA + 1.4
+LCD_CX, LCD_CY = 0.0, INNER_Y - LCD_BOARD_H / 2 - 3.0
+FACE_LIP = 1.0
 
-# 微雪 OV5640 Camera Board (C)
-CAM_BOARD_W, CAM_BOARD_H = 35.7, 23.9
-CAM_CX, CAM_CY = 0.0, 0.0  # was 8：随屏下移，保持 ≥16mm 缝
-CAM_POCKET_W = CAM_BOARD_W + POCKET + 1.2  # ≈每边再松 ~0.6+
-CAM_POCKET_H = CAM_BOARD_H + POCKET + 0.8
-# 微雪 C：镜头模组偏排针对侧，但不宜偏太狠——孔偏了会像「斜着拍」
-CAM_LENS_DX = 5.0  # was 8.5：往板心收，兼容装反/公差
+# 摄像横放叠在 ESP 上方：X=排针→镜头，Y=板宽；镜头偏 −X
+CAM_PCB_L = 35.70
+CAM_PCB_W = 23.90
+CAM_BOARD_W = CAM_PCB_L
+CAM_BOARD_H = CAM_PCB_W
+_esp_hi = ESP_CY + ESP_WID_Y / 2
+_TOP_GAP = 4.0
+CAM_CX = -INNER_X + CAM_BOARD_W / 2 + WALL_GAP
+CAM_CY = _esp_hi + _TOP_GAP + CAM_BOARD_H / 2
+CAM_POCKET_W = CAM_BOARD_W + POCKET + 1.2
+CAM_POCKET_H = CAM_BOARD_H + POCKET + 1.0
+CAM_LENS_DX = -8.5
 CAM_LENS_DY = 0.0
-CAM_D = 14.0  # 加大通光孔，避免壁厚挡光轴
-CAM_SQ = 16.0  # 方形模组凹槽（含闪光灯壳体余量）
+# 外通孔：摄像金属罩 + 闪光灯合一窗 2.5×1 cm
+# 长边沿 Y（罩上闪光下），短边沿 X
+CAM_WIN_H = 25.0
+CAM_WIN_W = 10.0
+CAM_WIN_DY = -2.0  # 相对镜头中心略下移
 
-# 4G：左上，避开 ESP（右侧）与电源
+
+def cam_win_center(lens_x: float, lens_y: float) -> tuple[float, float]:
+    return lens_x, lens_y + CAM_WIN_DY
+
+
 MODEM_W, MODEM_H = 28.0, 26.0
-MODEM_CX, MODEM_CY = -22.0, 36.0
+MODEM_CX = INNER_X - MODEM_W / 2 - WALL_GAP
+MODEM_CY = CAM_CY
 
-ANT_CABLE_W, ANT_CABLE_H = 8.0, 4.0
-ANT_CABLE_X = -18.0
+ANT_CABLE_W, ANT_CABLE_H = 10.0, 5.0
+ANT_CABLE_X = -8.0
 STRAP_D = 6.0
-ANT_PAD_W, ANT_PAD_H, ANT_PAD_D = 50.0, 15.0, 0.9
-ANT_PAD_CX, ANT_PAD_CY = 0.0, LCD_CY
+EAR_W, EAR_D = 16.0, 9.0
+EAR_Y = OUTER_W / 2 + EAR_D / 2 - 0.2
+EAR_FRONT_H = 11.0  # 前耳顶到合盖面
+EAR_BACK_H = 12.0   # 后耳顶到合盖面
 
-# ---------- 2 位独立按键模块（天猫电子积木常见款，非单颗 6×6）----------
-# 参考实物：双大方键并排 + 一端 2.54 排针；PCB 约 32～40 × 18～22
-# 口袋/孔一律偏松，兼容不同店家板子
-BTN_MOD_L = 42.0  # 沿双键方向（Y）口袋
-BTN_MOD_W = 24.0  # 沿板宽方向（后壳局部 Z）口袋
-BTN_MOD_T = 14.0  # 板+键帽向仓内占位
-BTN_PITCH = 15.5  # 两键中心距（常见 14～16）
-BTN_CAP = 12.0  # 单键露出方孔边长
-BTN_CY = 18.0  # 模块中心 Y（左壁）
-BTN_Z_B = 22.0  # 模块中心局部 Z（从外后脸）
+SW_FROM_PWR_BOTTOM = 13.0
+SW_BTN_LEN = 10.0
+SW_SLOT_W = 28.0
+SW_SLOT_H = SW_BTN_LEN + 5.0
+SW_CX = PWR_CX + 6.0
+SW_CY = (PWR_CY - PWR_WID_Y / 2) + SW_FROM_PWR_BOTTOM
+
+ESP_PWR_GAP_MIN = 5.5
 
 
 def rounded_box(l: float, w: float, h: float, r: float) -> cq.Workplane:
@@ -140,54 +160,229 @@ def rounded_box(l: float, w: float, h: float, r: float) -> cq.Workplane:
     )
 
 
-def make_clip_hook(cx: float, cy: float, outward_x: float, outward_y: float) -> cq.Workplane:
-    arm = (
+def make_bay_deck(
+    cx: float,
+    cy: float,
+    len_x: float,
+    wid_y: float,
+    deck_h: float,
+    rim_h: float,
+    rim_t: float = 1.6,
+    clear: float = 1.5,
+    open_px: bool = False,
+    open_nx: bool = False,
+    open_py: bool = False,
+    open_ny: bool = False,
+) -> cq.Workplane:
+    """后壳模块舱：底板支撑 + 围边（开口侧不设挡板，便于抽板/对接口）。"""
+    ox = len_x + clear * 2
+    oy = wid_y + clear * 2
+    z0 = WALL
+    deck = (
         cq.Workplane("XY")
-        .workplane(offset=SPLIT_Z - 0.2)
+        .workplane(offset=z0)
         .center(cx, cy)
-        .rect(
-            CLIP_W if abs(outward_y) > abs(outward_x) else CLIP_T,
-            CLIP_T if abs(outward_y) > abs(outward_x) else CLIP_W,
-        )
-        .extrude(CLIP_H)
+        .rect(ox, oy)
+        .extrude(deck_h)
     )
-    if abs(outward_y) > abs(outward_x):
+    # 围边：外框减内框
+    outer = (
+        cq.Workplane("XY")
+        .workplane(offset=z0 + deck_h)
+        .center(cx, cy)
+        .rect(ox, oy)
+        .extrude(rim_h)
+    )
+    inner = (
+        cq.Workplane("XY")
+        .workplane(offset=z0 + deck_h - 0.05)
+        .center(cx, cy)
+        .rect(ox - 2 * rim_t, oy - 2 * rim_t)
+        .extrude(rim_h + 0.2)
+    )
+    rim = outer.cut(inner)
+    # 开口侧切掉围边
+    cut_d = rim_t + 1.0
+    if open_px:
+        rim = rim.cut(
+            cq.Workplane("XY")
+            .workplane(offset=z0 + deck_h - 0.1)
+            .center(cx + ox / 2 - cut_d / 2, cy)
+            .rect(cut_d + 0.2, oy + 1)
+            .extrude(rim_h + 0.4)
+        )
+    if open_nx:
+        rim = rim.cut(
+            cq.Workplane("XY")
+            .workplane(offset=z0 + deck_h - 0.1)
+            .center(cx - ox / 2 + cut_d / 2, cy)
+            .rect(cut_d + 0.2, oy + 1)
+            .extrude(rim_h + 0.4)
+        )
+    if open_py:
+        rim = rim.cut(
+            cq.Workplane("XY")
+            .workplane(offset=z0 + deck_h - 0.1)
+            .center(cx, cy + oy / 2 - cut_d / 2)
+            .rect(ox + 1, cut_d + 0.2)
+            .extrude(rim_h + 0.4)
+        )
+    if open_ny:
+        rim = rim.cut(
+            cq.Workplane("XY")
+            .workplane(offset=z0 + deck_h - 0.1)
+            .center(cx, cy - oy / 2 + cut_d / 2)
+            .rect(ox + 1, cut_d + 0.2)
+            .extrude(rim_h + 0.4)
+        )
+    return deck.union(rim)
+
+
+def make_clip_hook(cx: float, cy: float, outward_x: float, outward_y: float) -> cq.Workplane:
+    """前壳卡勾：自内壁长出的整块筋（勾与壁之间无缝），外向勾齿。"""
+    along_y = abs(outward_y) > abs(outward_x)
+    z0 = SPLIT_Z - 5.5
+    zh = 5.5 + CLIP_H + 0.2  # 根到勾顶连成一根
+
+    if along_y:
+        sgn = 1.0 if outward_y > 0 else -1.0
+        # 一整块：从腔内贴壁一直长进壁厚，Z 向连续，不留缝
+        y_cav = sgn * (INNER_Y - CLIP_T - 0.3)
+        y_out = sgn * (OUTER_W / 2 - 0.12)
+        pad = (
+            cq.Workplane("XY")
+            .workplane(offset=z0)
+            .center(cx, (y_cav + y_out) / 2)
+            .rect(CLIP_W + 2.4, abs(y_out - y_cav))
+            .extrude(zh)
+        )
         hook = (
             cq.Workplane("XY")
-            .workplane(offset=SPLIT_Z - 0.2 + CLIP_H - 1.2)
-            .center(cx, cy + outward_y * (CLIP_T / 2 + HOOK / 2))
-            .rect(CLIP_W, HOOK)
-            .extrude(1.2)
+            .workplane(offset=SPLIT_Z - 0.35 + CLIP_H - 1.35)
+            .center(cx, sgn * (INNER_Y + HOOK / 2))
+            .rect(CLIP_W * 0.88, HOOK)
+            .extrude(1.35)
+        )
+        return pad.union(hook)
+
+    sgn = 1.0 if outward_x > 0 else -1.0
+    x_cav = sgn * (INNER_X - CLIP_T - 0.3)
+    x_out = sgn * (OUTER_L / 2 - 0.12)
+    pad = (
+        cq.Workplane("XY")
+        .workplane(offset=z0)
+        .center((x_cav + x_out) / 2, cy)
+        .rect(abs(x_out - x_cav), CLIP_W + 2.4)
+        .extrude(zh)
+    )
+    hook = (
+        cq.Workplane("XY")
+        .workplane(offset=SPLIT_Z - 0.35 + CLIP_H - 1.35)
+        .center(sgn * (INNER_X + HOOK / 2), cy)
+        .rect(HOOK, CLIP_W * 0.88)
+        .extrude(1.35)
+    )
+    return pad.union(hook)
+
+
+def apply_clip_latch(body: cq.Workplane, cx: float, cy: float, along_y: bool, h: float) -> cq.Workplane:
+    """后壳卡扣（v7.30 外观）：窄导入 + 外壁卡窗 + 口实心台肩；窗两端立柱填实过梁。"""
+    lead = TOL * 0.35 + CLIP_SLOT_EXTRA
+    if along_y:
+        lead_sx, lead_sy = CLIP_W + TOL * 0.5 + 0.2, CLIP_T + lead
+    else:
+        lead_sx, lead_sy = CLIP_T + lead, CLIP_W + TOL * 0.5 + 0.2
+    body = body.cut(
+        cq.Workplane("XY")
+        .workplane(offset=h + 0.2)
+        .center(cx, cy)
+        .rect(lead_sx, lead_sy)
+        .extrude(-(CLIP_RIM_KEEP + CLIP_H + 1.0))
+    )
+
+    z1 = h - CLIP_RIM_KEEP
+    win_z = CLIP_H + 0.5
+    z0 = z1 - win_z
+    win_along = CLIP_W + 1.2
+    # 中间净空给勾齿；两端立柱宽度
+    clear_mid = max(4.0, win_along - 2 * CLIP_PILLAR_W)
+
+    if along_y:
+        sgn = 1.0 if cy > 0 else -1.0
+        wyc = sgn * (OUTER_W / 2 - WALL / 2)
+        body = body.cut(
+            cq.Workplane("XY")
+            .workplane(offset=z0)
+            .center(cx, wyc)
+            .box(win_along, WALL + 1.0, win_z, centered=(True, True, False))
+        )
+        # 两端立柱：从窗底连到台肩，把过梁撑住（中间留空给勾）
+        for s in (-1.0, 1.0):
+            px = cx + s * (win_along / 2 - CLIP_PILLAR_W / 2)
+            pillar = (
+                cq.Workplane("XY")
+                .workplane(offset=z0)
+                .center(px, wyc)
+                .box(CLIP_PILLAR_W, WALL + 0.6, win_z + 0.15, centered=(True, True, False))
+            )
+            body = body.union(pillar)
+        # 保险：中间勾区再清一次，防止立柱布尔吃进中缝
+        body = body.cut(
+            cq.Workplane("XY")
+            .workplane(offset=z0 - 0.05)
+            .center(cx, wyc)
+            .box(clear_mid, WALL + 1.2, win_z + 0.2, centered=(True, True, False))
         )
     else:
-        hook = (
+        sgn = 1.0 if cx > 0 else -1.0
+        wxc = sgn * (OUTER_L / 2 - WALL / 2)
+        body = body.cut(
             cq.Workplane("XY")
-            .workplane(offset=SPLIT_Z - 0.2 + CLIP_H - 1.2)
-            .center(cx + outward_x * (CLIP_T / 2 + HOOK / 2), cy)
-            .rect(HOOK, CLIP_W)
-            .extrude(1.2)
+            .workplane(offset=z0)
+            .center(wxc, cy)
+            .box(WALL + 1.0, win_along, win_z, centered=(True, True, False))
         )
-    return arm.union(hook)
+        for s in (-1.0, 1.0):
+            py = cy + s * (win_along / 2 - CLIP_PILLAR_W / 2)
+            pillar = (
+                cq.Workplane("XY")
+                .workplane(offset=z0)
+                .center(wxc, py)
+                .box(WALL + 0.6, CLIP_PILLAR_W, win_z + 0.15, centered=(True, True, False))
+            )
+            body = body.union(pillar)
+        body = body.cut(
+            cq.Workplane("XY")
+            .workplane(offset=z0 - 0.05)
+            .center(wxc, cy)
+            .box(WALL + 1.2, clear_mid, win_z + 0.2, centered=(True, True, False))
+        )
+    return body
 
 
-def make_clip_slot(cx: float, cy: float, along_y: bool) -> cq.Workplane:
-    h = OUTER_H - SPLIT_Z
-    clear = TOL * 2 + CLIP_SLOT_EXTRA
-    if along_y:
-        return (
-            cq.Workplane("XY")
-            .workplane(offset=h - LIP - 0.2)
-            .center(cx, cy)
-            .rect(CLIP_W + clear, CLIP_T + HOOK + clear)
-            .extrude(LIP + CLIP_H + 0.5)
-        )
-    return (
+def make_strap_ear(z0: float, zh: float) -> cq.Workplane:
+    """挂绳耳：从 z0 起高 zh，圆孔沿 Z，前后半在合盖面齐平对接。"""
+    ear = (
         cq.Workplane("XY")
-        .workplane(offset=h - LIP - 0.2)
-        .center(cx, cy)
-        .rect(CLIP_T + HOOK + clear, CLIP_W + clear)
-        .extrude(LIP + CLIP_H + 0.5)
+        .workplane(offset=z0)
+        .center(0, EAR_Y)
+        .box(EAR_W, EAR_D, zh, centered=(True, True, False))
+        .edges("|Z")
+        .fillet(2.0)
     )
+    return ear.cut(
+        cq.Workplane("XY")
+        .workplane(offset=z0 - 0.2)
+        .center(0, EAR_Y)
+        .circle(STRAP_D / 2)
+        .extrude(zh + 0.5)
+    )
+
+
+def mate_back(back: cq.Workplane) -> cq.Workplane:
+    """后壳绕 Y 翻 180° 与前壳合盖（顶耳保持在 +Y）。"""
+    hb = OUTER_H - SPLIT_Z
+    return back.rotate((0, 0, 0), (0, 1, 0), 180).translate((0, 0, SPLIT_Z + hb))
 
 
 def shell_front() -> cq.Workplane:
@@ -205,126 +400,62 @@ def shell_front() -> cq.Workplane:
         .fillet(max(0.6, CORNER_R - WALL))
     )
 
+    # --- 屏：外表面平整，只开官网可视窗；PCB 仅内侧浅定位 ---
     body = body.cut(
         cq.Workplane("XY")
-        .workplane(offset=-0.1)
+        .workplane(offset=-0.8)
         .center(LCD_CX, LCD_CY)
-        .rect(LCD_VIEW + TOL * 1.5, LCD_VIEW + TOL * 1.5)
-        .extrude(WALL + 0.4)
+        .rect(LCD_VIEW + TOL, LCD_VIEW + TOL)
+        .extrude(WALL + 2.0)
     )
+    # 内侧浅槽：从内壁往外挖，保留 FACE_LIP，不打穿外表面
     body = body.cut(
         cq.Workplane("XY")
-        .workplane(offset=WALL - 0.5)
+        .workplane(offset=WALL + 0.05)
         .center(LCD_CX, LCD_CY)
         .rect(LCD_BOARD_W + POCKET, LCD_BOARD_H + POCKET)
-        .extrude(-(WALL - 0.35))
+        .extrude(-(WALL - FACE_LIP))
     )
-    # 屏左右短边出线槽（PH2.0 / 排针杜邦，与微雪实物一致）
-    for side in (-1.0, 1.0):
-        body = body.cut(
-            cq.Workplane("XY")
-            .workplane(offset=WALL)
-            .center(
-                LCD_CX + side * (LCD_BOARD_W / 2 + DUPONT_SIDE_CLEAR / 2 - 0.5),
-                LCD_CY,
-            )
-            .rect(DUPONT_SIDE_CLEAR, LCD_BOARD_H * 0.8)
-            .extrude(WIRE_LOFT_Z)
-        )
-
-    # 摄像板矩形浅凹
+    # 屏左侧短边出线槽
     body = body.cut(
         cq.Workplane("XY")
-        .workplane(offset=WALL - 0.7)
-        .center(CAM_CX, CAM_CY)
-        .rect(CAM_POCKET_W, CAM_POCKET_H)
-        .extrude(-(WALL - 0.4))
-    )
-    lens_x = CAM_CX + CAM_LENS_DX
-    lens_y = CAM_CY + CAM_LENS_DY
-    # 方形模组凹进前壁（模组不是圆的）
-    body = body.cut(
-        cq.Workplane("XY")
-        .workplane(offset=WALL - 0.9)
-        .center(lens_x, lens_y)
-        .rect(CAM_SQ + TOL, CAM_SQ + TOL)
-        .extrude(-(WALL - 0.25))
-    )
-    # 镜头圆孔（偏在模组端，不在板心）
-    body = body.cut(
-        cq.Workplane("XY")
-        .workplane(offset=-0.1)
-        .center(lens_x, lens_y)
-        .circle(CAM_D / 2 + TOL / 2)
-        .extrude(WALL + 0.4)
-    )
-    # 排针在 -X 短边 → 杜邦出左侧（不是板下沿）
-    body = body.cut(
-        cq.Workplane("XY")
-        .workplane(offset=WALL + 1.0)
+        .workplane(offset=WALL)
         .center(
-            CAM_CX - CAM_BOARD_W / 2 - DUPONT_SIDE_CLEAR / 2 + 1.0,
-            CAM_CY,
+            LCD_CX - (LCD_BOARD_W / 2 + DUPONT_SIDE_CLEAR / 2 - 0.5),
+            LCD_CY,
         )
-        .rect(DUPONT_SIDE_CLEAR, max(CAM_BOARD_H + 4.0, CAM_BUNDLE_T + 8.0))
+        .rect(DUPONT_SIDE_CLEAR, LCD_BOARD_H * 0.8)
         .extrude(WIRE_LOFT_Z)
     )
-    # 中央线舱（偏左：ESP 在右，线束往中左汇合）
+    # 前线舱（仅屏线；摄像已改后壳）
     body = body.cut(
         cq.Workplane("XY")
         .workplane(offset=WALL + 2.0)
-        .center(-6.0, (LCD_CY + CAM_CY) / 2 - 4.0)
-        .rect(OUTER_L - 2 * WALL - 16.0, 40.0)
+        .center(-6.0, LCD_CY - 10.0)
+        .rect(OUTER_L - 2 * WALL - 16.0, 28.0)
         .extrude(h - WALL - 4.0)
     )
 
-    # 电源/ESP 的 USB 均在后仓高度，前壳底边/右侧不开孔（避免无效孔）
+    # 电源/ESP USB 均在后壳，前壳不开
 
-    # 止口略小于后壳槽（双侧各约 TOL/2 + 0.15），避免合盖卡死
+    # 深止口：外廓按后槽内缩，圆角等距；外沿仍嵌入内壁与外壳连体
     lip = (
         cq.Workplane("XY")
-        .workplane(offset=h - 0.05)
-        .box(
-            OUTER_L - 2 * WALL - TOL - 0.3,
-            OUTER_W - 2 * WALL - TOL - 0.3,
-            LIP + 0.05,
-            centered=(True, True, False),
-        )
+        .workplane(offset=h - 1.2)
+        .box(_LIP_OUT_L, _LIP_OUT_W, LIP + 1.25, centered=(True, True, False))
         .edges("|Z")
-        .fillet(max(0.5, CORNER_R - WALL - 0.5))
+        .fillet(_LIP_OUT_R)
     )
     lip_i = (
         cq.Workplane("XY")
-        .workplane(offset=h - 0.05)
-        .box(
-            OUTER_L - 2 * WALL - TOL - 2.9,
-            OUTER_W - 2 * WALL - TOL - 2.9,
-            LIP + 0.3,
-            centered=(True, True, False),
-        )
+        .workplane(offset=h - 1.25)
+        .box(_LIP_IN_L, _LIP_IN_W, LIP + 1.5, centered=(True, True, False))
     )
     body = body.union(lip.cut(lip_i))
-    body = body.union(make_clip_hook(CLIPS[0][0], CLIPS[0][1], 0, 1))
-    body = body.union(make_clip_hook(CLIPS[1][0], CLIPS[1][1], 0, -1))
-    body = body.union(make_clip_hook(CLIPS[2][0], CLIPS[2][1], 1, 0))
-    body = body.union(make_clip_hook(CLIPS[3][0], CLIPS[3][1], -1, 0))
+    for cx, cy, ox, oy in CLIPS:
+        body = body.union(make_clip_hook(cx, cy, ox, oy))
 
-    ear = (
-        cq.Workplane("XY")
-        .workplane(offset=h * 0.25)
-        .center(0, OUTER_W / 2 + 4.2)
-        .box(16, 9, h * 0.45, centered=(True, True, False))
-        .edges("|Z")
-        .fillet(2.2)
-    )
-    ear = ear.cut(
-        cq.Workplane("XY")
-        .workplane(offset=h * 0.25 - 0.1)
-        .center(0, OUTER_W / 2 + 4.2)
-        .circle(STRAP_D / 2)
-        .extrude(h)
-    )
-    return body.union(ear)
+    return body.union(make_strap_ear(SPLIT_Z - EAR_FRONT_H, EAR_FRONT_H))
 
 
 def shell_back() -> cq.Workplane:
@@ -342,51 +473,65 @@ def shell_back() -> cq.Workplane:
         .fillet(max(0.6, CORNER_R - WALL))
     )
 
+    # 止口槽：相对外壳外廓内缩 MIN_RIM_WALL，圆角 = CORNER_R−留壁（四角不削薄）
     groove = (
         cq.Workplane("XY")
         .workplane(offset=h - LIP - TOL)
-        .box(
-            OUTER_L - 2 * WALL + TOL + 0.3,
-            OUTER_W - 2 * WALL + TOL + 0.3,
-            LIP + TOL + 0.3,
-            centered=(True, True, False),
-        )
+        .box(_GROOVE_L, _GROOVE_W, LIP + TOL + 0.3, centered=(True, True, False))
         .edges("|Z")
-        .fillet(max(0.4, CORNER_R - WALL - 0.3))
+        .fillet(_GROOVE_R)
     )
     body = body.cut(groove)
-    body = body.cut(make_clip_slot(CLIPS[0][0], CLIPS[0][1], True))
-    body = body.cut(make_clip_slot(CLIPS[1][0], CLIPS[1][1], True))
-    body = body.cut(make_clip_slot(CLIPS[2][0], CLIPS[2][1], False))
-    body = body.cut(make_clip_slot(CLIPS[3][0], CLIPS[3][1], False))
+    for cx, cy, ox, oy in CLIPS:
+        body = apply_clip_latch(body, cx, cy, abs(oy) > abs(ox), h)
 
-    rail = (
-        cq.Workplane("XY")
-        .workplane(offset=WALL)
-        .center(PWR_CX, PWR_CY)
-        .rect(PWR_LEN_X + PWR_CLEAR * 2 + 2.4, PWR_WID_Y + PWR_CLEAR * 2 + 2.4)
-        .extrude(2.4)
-        .faces(">Z")
-        .shell(-1.2)
+    # ---- 模块舱：支撑板 + 围边（可落位安装）----
+    # 电源舱：底板支撑，底边开口对准充电 USB
+    body = body.union(
+        make_bay_deck(
+            PWR_CX,
+            PWR_CY,
+            PWR_LEN_X,
+            PWR_WID_Y,
+            deck_h=2.2,
+            rim_h=4.0,
+            rim_t=1.6,
+            clear=PWR_CLEAR,
+            open_ny=True,  # 底边开口 → USB
+            open_px=True,  # 一侧开口方便落板/走线
+        )
     )
-    try:
-        body = body.union(rail)
-    except Exception:
-        pass
 
-    esp_rail = (
-        cq.Workplane("XY")
-        .workplane(offset=WALL)
-        .center(ESP_CX, ESP_CY)
-        .rect(ESP_LEN_X + POCKET * 2, ESP_WID_Y + POCKET * 2)
-        .extrude(2.0)
-        .faces(">Z")
-        .shell(-1.0)
+    # ESP 开发板舱：必须有支撑板，否则无处安放；右侧开口对准烧录 USB
+    body = body.union(
+        make_bay_deck(
+            ESP_CX,
+            ESP_CY,
+            ESP_LEN_X,
+            ESP_WID_Y,
+            deck_h=ESP_DECK_H,
+            rim_h=ESP_RIM_H,
+            rim_t=ESP_RIM_T,
+            clear=POCKET,
+            open_px=True,  # +X 开口 → 烧录口
+            open_nx=True,  # -X 开口 → 杜邦出线
+        )
     )
-    try:
-        body = body.union(esp_rail)
-    except Exception:
-        pass
+
+    # 4G 舱：浅支撑板，朝 ESP 侧开口走线
+    body = body.union(
+        make_bay_deck(
+            MODEM_CX,
+            MODEM_CY,
+            MODEM_W + 2.0,
+            MODEM_H + 2.0,
+            deck_h=2.0,
+            rim_h=3.0,
+            rim_t=1.4,
+            clear=1.5,
+            open_px=True,
+        )
+    )
 
     # ESP 长边杜邦：±Y；右侧贴墙无空间 → 右侧不挖，只保证上/下/朝左
     for dy in (
@@ -409,114 +554,80 @@ def shell_back() -> cq.Workplane:
         .extrude(h - WALL - 2.0)
     )
 
-    modem_rail = (
-        cq.Workplane("XY")
-        .workplane(offset=WALL)
-        .center(MODEM_CX, MODEM_CY)
-        .rect(MODEM_W + 5.0, MODEM_H + DUPONT_SIDE_CLEAR * 0.4 + 2.5)
-        .extrude(1.8)
-        .faces(">Z")
-        .shell(-1.0)
-    )
-    try:
-        body = body.union(modem_rail)
-    except Exception:
-        pass
-
-    # 底：电源 USB-C（孔略大，兼容线材护套与打印收缩）
+    # 底：电源 USB-C（XZ 法向为 -Y：offset 正值落在 -Y 底面，负挤出穿入）
     body = body.cut(
         cq.Workplane("XZ")
-        .workplane(offset=-OUTER_W / 2 + 0.05)
+        .workplane(offset=OUTER_W / 2 + 0.8)
         .center(USBC_X, USBC_Z_B)
         .rect(USBC_W + TOL * 1.5, USBC_H + TOL)
-        .extrude(WALL + 5)
+        .extrude(-(WALL + 6))
     )
-    # 右侧：ESP USB（后壳段）
+    # 右侧：ESP 烧录口 12×5（再加 TOL）
     body = body.cut(
         cq.Workplane("YZ")
-        .workplane(offset=OUTER_L / 2 - 0.05)
+        .workplane(offset=OUTER_L / 2 + 0.8)
         .center(ESP_CY, ESP_USB_Z)
-        .rect(ESP_USB_W + TOL * 1.5, ESP_USB_H + TOL)
-        .extrude(-(WALL + 5))
+        .rect(ESP_USB_W + TOL, ESP_USB_H + TOL * 0.5)
+        .extrude(-(WALL + 6))
     )
 
-    # BOOT（后壳外底面；腰圆孔兼容键位偏差）— 烧录/备用，日常用左壁外接键
-    body = body.cut(
-        cq.Workplane("XY")
-        .workplane(offset=-0.05)
-        .center(BOOT_CX, BOOT_CY)
-        .slot2D(BOOT_D + BOOT_SLOT_X + TOL, BOOT_D + TOL, 0)
-        .extrude(WALL + 1.2)
-    )
+    # （已取消左壁双键开孔——开发板按键不穿壳）
 
-    # 2 位独立按键模块：左壁双键方窗 + 内侧整板凹座
-    for dy in (-BTN_PITCH / 2, BTN_PITCH / 2):
-        body = body.cut(
-            cq.Workplane("YZ")
-            .workplane(offset=-OUTER_L / 2 + 0.05)
-            .center(BTN_CY + dy, BTN_Z_B)
-            .rect(BTN_CAP + TOL, BTN_CAP + TOL)
-            .extrude(WALL + 5)
-        )
-    body = body.cut(
-        cq.Workplane("YZ")
-        .workplane(offset=-OUTER_L / 2 + WALL - 0.15)
-        .center(BTN_CY, BTN_Z_B)
-        .rect(BTN_MOD_L, BTN_MOD_W)
-        .extrude(BTN_MOD_T)
-    )
-
-    # 开关指拨槽（后壳背面，对准电源 +Y 边；加长兼容偏位）
+    # 开关指拨槽：只打穿后壁，禁止挖穿电源舱底板
     body = body.cut(
         cq.Workplane("XY")
         .workplane(offset=-0.05)
         .center(SW_CX, SW_CY)
         .rect(SW_SLOT_W, SW_SLOT_H)
-        .extrude(WALL + 1.5)
+        .extrude(WALL + 0.25)
     )
 
-    # 顶：天线馈线（靠近左上 4G）
+    # 顶：天线馈线（XZ 法向 -Y：offset 负值落在 +Y 顶面，正挤出穿入）
     body = body.cut(
         cq.Workplane("XZ")
-        .workplane(offset=OUTER_W / 2 - 0.05)
+        .workplane(offset=-(OUTER_W / 2 + 0.8))
         .center(ANT_CABLE_X, 11.0)
         .rect(ANT_CABLE_W + TOL, ANT_CABLE_H + TOL * 0.5)
-        .extrude(-(WALL + 4))
+        .extrude(WALL + 6)
     )
 
+    # --- 摄像在后壳外侧（与前屏相对）：镜头向外拍照 ---
+    lens_x = CAM_CX + CAM_LENS_DX
+    lens_y = CAM_CY + CAM_LENS_DY
+    win_x, win_y = cam_win_center(lens_x, lens_y)
     body = body.cut(
         cq.Workplane("XY")
-        .workplane(offset=-0.05)
-        .center(ANT_PAD_CX, ANT_PAD_CY)
-        .rect(ANT_PAD_W, ANT_PAD_H)
-        .extrude(ANT_PAD_D + 0.1)
+        .workplane(offset=WALL + 0.05)
+        .center(CAM_CX, CAM_CY)
+        .rect(CAM_POCKET_W, CAM_POCKET_H)
+        .extrude(-(WALL - FACE_LIP))
+    )
+    # 外通孔 25×10：金属罩 + 闪光灯同一窗
+    body = body.cut(
+        cq.Workplane("XY")
+        .workplane(offset=-0.8)
+        .center(win_x, win_y)
+        .rect(CAM_WIN_W + TOL * 0.5, CAM_WIN_H + TOL * 0.5)
+        .extrude(WALL + 2.0)
+    )
+    # 内侧略放大让位，避免卡罩
+    body = body.cut(
+        cq.Workplane("XY")
+        .workplane(offset=WALL + 0.05)
+        .center(win_x, win_y)
+        .rect(CAM_WIN_W + TOL + 0.8, CAM_WIN_H + TOL + 0.8)
+        .extrude(-(WALL - 0.35))
+    )
+    # 排针在 +X，线束向下汇入 ESP
+    body = body.cut(
+        cq.Workplane("XY")
+        .workplane(offset=WALL + 1.0)
+        .center(CAM_CX + CAM_BOARD_W / 4, CAM_CY - CAM_BOARD_H / 2 - DUPONT_SIDE_CLEAR / 2 + 1.0)
+        .rect(max(CAM_BOARD_W / 2 + 8.0, CAM_BUNDLE_T + 10.0), DUPONT_SIDE_CLEAR + 4.0)
+        .extrude(WIRE_LOFT_Z)
     )
 
-    ear = (
-        cq.Workplane("XY")
-        .workplane(offset=0)
-        .center(0, OUTER_W / 2 + 4.2)
-        .box(16, 9, h * 0.85, centered=(True, True, False))
-        .edges("|Z")
-        .fillet(2.2)
-    )
-    ear = ear.cut(
-        cq.Workplane("XY")
-        .workplane(offset=-0.1)
-        .center(0, OUTER_W / 2 + 4.2)
-        .circle(STRAP_D / 2)
-        .extrude(h + 1)
-    )
-    body = body.union(ear)
-
-    for ox in (-22, 10):
-        body = body.cut(
-            cq.Workplane("XY")
-            .workplane(offset=-0.1)
-            .center(ox, -8)
-            .rect(12, 1.6)
-            .extrude(WALL + 0.3)
-        )
+    body = body.union(make_strap_ear(h - EAR_BACK_H, EAR_BACK_H))
     return body
 
 
@@ -539,44 +650,36 @@ def audit() -> dict:
     esp_x0, esp_x1 = ESP_CX - ESP_LEN_X / 2, ESP_CX + ESP_LEN_X / 2
     pwr_lo, pwr_hi = PWR_CY - PWR_WID_Y / 2, PWR_CY + PWR_WID_Y / 2
     pwr_x0, pwr_x1 = PWR_CX - PWR_LEN_X / 2, PWR_CX + PWR_LEN_X / 2
-    mod_x0 = MODEM_CX - (MODEM_W + 5) / 2
-    mod_x1 = MODEM_CX + (MODEM_W + 5) / 2
-    mod_y0 = MODEM_CY - (MODEM_H + DUPONT_SIDE_CLEAR * 0.4 + 2.5) / 2
-    mod_y1 = MODEM_CY + (MODEM_H + DUPONT_SIDE_CLEAR * 0.4 + 2.5) / 2
+    mod_x0 = MODEM_CX - MODEM_W / 2 - 1.0
+    mod_x1 = MODEM_CX + MODEM_W / 2 + 1.0
+    mod_y0 = MODEM_CY - MODEM_H / 2 - 1.0
+    mod_y1 = MODEM_CY + MODEM_H / 2 + 1.0
 
     bottom_inner = -INNER_Y
     right_inner = INNER_X
     issues: list[str] = []
 
-    if _overlap(lcd_lo, lcd_hi, cam_lo, cam_hi) > 0.1:
-        issues.append("LCD/CAM Y 重叠")
-    gap_lc = _gap(lcd_lo, lcd_hi, cam_lo, cam_hi)
-    if gap_lc < 16.0:
-        issues.append(f"LCD-CAM 缝 {gap_lc:.1f} < 16")
+    # 屏与摄已分前后壳，不再要求同面 Y 缝
+    gap_lc = abs(LCD_CY - CAM_CY)
+
+    # 后壳：摄像不得与 ESP/电源/4G XY 重叠
+    cam_x0, cam_x1 = CAM_CX - CAM_BOARD_W / 2, CAM_CX + CAM_BOARD_W / 2
+    if _overlap(cam_x0, cam_x1, esp_x0, esp_x1) > 1 and _overlap(cam_lo, cam_hi, esp_lo, esp_hi) > 1:
+        issues.append("摄像与 ESP 后壳 XY 重叠")
+    if _overlap(cam_x0, cam_x1, pwr_x0, pwr_x1) > 1 and _overlap(cam_lo, cam_hi, pwr_lo, pwr_hi) > 1:
+        issues.append("摄像与电源后壳 XY 重叠")
+    if _overlap(cam_x0, cam_x1, mod_x0, mod_x1) > 1 and _overlap(cam_lo, cam_hi, mod_y0, mod_y1) > 1:
+        issues.append("摄像与 4G 后壳 XY 重叠")
 
     gap_ep = _gap(esp_lo, esp_hi, pwr_lo, pwr_hi)
-    if gap_ep < 17.0:
-        issues.append(f"ESP-PWR 缝 {gap_ep:.1f} < 17（杜邦）")
+    if gap_ep < ESP_PWR_GAP_MIN:
+        issues.append(f"ESP-PWR 缝 {gap_ep:.1f} < {ESP_PWR_GAP_MIN}（走线）")
 
-    # USB 可达（允许 WALL_GAP～2.5mm 浮动）
-    if not (0.3 <= (pwr_lo - bottom_inner) <= 2.8):
+    # USB 可达（允许更大浮动）
+    if not (0.3 <= (pwr_lo - bottom_inner) <= 3.5):
         issues.append(f"电源底边距内壁 {pwr_lo - bottom_inner:.1f}，USB-C 可能够不到或过松")
-    if not (0.3 <= (right_inner - esp_x1) <= 2.8):
+    if not (0.3 <= (right_inner - esp_x1) <= 3.5):
         issues.append(f"ESP 右边距内壁 {right_inner - esp_x1:.1f}，侧 USB 可能够不到或过松")
-
-    # BOOT 在 ESP 板上
-    if not (esp_x0 <= BOOT_CX <= esp_x1 and esp_lo <= BOOT_CY <= esp_hi):
-        issues.append("BOOT 孔不在 ESP 板范围内")
-
-    # 双键模块：左壁、后仓高度内，勿撞电源底边
-    btn_y0, btn_y1 = BTN_CY - BTN_MOD_L / 2, BTN_CY + BTN_MOD_L / 2
-    btn_z0, btn_z1 = BTN_Z_B - BTN_MOD_W / 2, BTN_Z_B + BTN_MOD_W / 2
-    if btn_z0 < 1.0 or btn_z1 > (OUTER_H - SPLIT_Z - WALL - 1.0):
-        issues.append("双键模块 Z 超出后壳")
-    if btn_y0 < pwr_hi + 6:
-        issues.append("双键模块 Y 太靠近电源区")
-    if abs(BTN_CY - MODEM_CY) < 12:
-        issues.append("双键模块 Y 与 4G 过近")
 
     # 4G 与 ESP 本体
     if _overlap(mod_x0, mod_x1, esp_x0, esp_x1) > 1 and _overlap(mod_y0, mod_y1, esp_lo, esp_hi) > 1:
@@ -601,14 +704,59 @@ def audit() -> dict:
     if SPLIT_Z - WALL < WIRE_LOFT_Z + 6:
         issues.append("前线舱过浅")
 
-    # 镜头孔须落在摄像板范围内（偏模组端，非板心）
+    # 摄像外窗 25×10：中心对准镜头区，允许略超出 PCB 轮廓（外孔大于光学区）
     lens_x, lens_y = CAM_CX + CAM_LENS_DX, CAM_CY + CAM_LENS_DY
+    win_x, win_y = cam_win_center(lens_x, lens_y)
     cam_x0, cam_x1 = CAM_CX - CAM_BOARD_W / 2, CAM_CX + CAM_BOARD_W / 2
-    if not (cam_x0 + 3 <= lens_x <= cam_x1 - 3 and cam_lo + 3 <= lens_y <= cam_hi - 3):
-        issues.append("镜头孔偏离摄像板有效区")
-    # 开关槽落在电源板 +Y 边附近
-    if not (pwr_x0 <= SW_CX <= pwr_x1 and abs(SW_CY - pwr_hi) < 6):
-        issues.append("开关槽未对准电源板顶边区域")
+    if not (cam_x0 + 2 <= lens_x <= cam_x1 - 2 and cam_lo + 3 <= lens_y <= cam_hi - 3):
+        issues.append("镜头偏离摄像板有效区")
+    if abs(CAM_WIN_H - 25.0) > 0.05 or abs(CAM_WIN_W - 10.0) > 0.05:
+        issues.append("摄像窗外廓应为 25×10 mm")
+    half_w, half_h = CAM_WIN_W / 2, CAM_WIN_H / 2
+    if (
+        win_x - half_w < -INNER_X - 0.2
+        or win_x + half_w > INNER_X + 0.2
+        or win_y - half_h < -INNER_Y - 0.2
+        or win_y + half_h > INNER_Y + 0.2
+    ):
+        issues.append("摄像窗超出后壳内廓")
+    # 窗须盖住镜头中心
+    if not (win_x - half_w + 1 <= lens_x <= win_x + half_w - 1):
+        issues.append("摄像窗未盖住镜头 X")
+    if not (win_y - half_h + 1 <= lens_y <= win_y + half_h - 1):
+        issues.append("摄像窗未盖住镜头 Y")
+    # 开关槽：距电源底边名义 13mm，槽加大后允许 ±2mm 偏差
+    if not (pwr_x0 - 2.0 <= SW_CX <= pwr_x1 + 2.0):
+        issues.append("开关槽 X 严重偏离电源板")
+    if not (pwr_lo + 1.0 <= SW_CY <= pwr_hi - 1.0):
+        issues.append("开关槽 Y 不在电源板范围内")
+    sw_from_bottom = SW_CY - pwr_lo
+    if abs(sw_from_bottom - SW_FROM_PWR_BOTTOM) > 0.5:
+        issues.append(f"开关距电源底 {sw_from_bottom:.1f} ≠ 名义 {SW_FROM_PWR_BOTTOM}")
+    if SW_SLOT_H < SW_BTN_LEN + 3.0:
+        issues.append("开关槽高度余量不足")
+
+    # 卡扣必须贴内壁：臂外沿应压进壁厚，禁止悬空在腔内
+    for i, (cx, cy, ox, oy) in enumerate(CLIPS):
+        if abs(oy) > abs(ox):
+            # 沿 Y 壁：中心距内壁 ≈ CLIP_T/2 − EMBED（负=嵌入）
+            dist = abs(abs(cy) - INNER_Y)
+            expect = CLIP_T / 2 - CLIP_EMBED
+            if abs(dist - expect) > 0.15 or abs(cy) < INNER_Y - CLIP_T:
+                issues.append(f"卡扣{i} Y悬空/未贴壁 dist={dist:.2f}")
+            tip = abs(cy) + CLIP_T / 2 + HOOK
+            skin = OUTER_W / 2 - tip
+            if skin < MIN_HOOK_SKIN:
+                issues.append(f"卡扣{i} 勾尖外壁余量仅 {skin:.2f}（须≥{MIN_HOOK_SKIN}）")
+        else:
+            dist = abs(abs(cx) - INNER_X)
+            expect = CLIP_T / 2 - CLIP_EMBED
+            if abs(dist - expect) > 0.15 or abs(cx) < INNER_X - CLIP_T:
+                issues.append(f"卡扣{i} X悬空/未贴壁 dist={dist:.2f}")
+            tip = abs(cx) + CLIP_T / 2 + HOOK
+            skin = OUTER_L / 2 - tip
+            if skin < MIN_HOOK_SKIN:
+                issues.append(f"卡扣{i} 勾尖外壁余量仅 {skin:.2f}（须≥{MIN_HOOK_SKIN}）")
 
     # 20cm 杜邦：曼哈顿估算（含弯折余量），前壳板 z≈6，后仓板 z≈后壁内收一截
     z_front = 6.0
@@ -622,11 +770,8 @@ def audit() -> dict:
         "LCD左→ESP": _cable(
             LCD_CX - LCD_BOARD_W / 2, LCD_CY, z_front, esp_x0 + 4.0, ESP_CY, z_back
         ),
-        "LCD右→ESP": _cable(
-            LCD_CX + LCD_BOARD_W / 2, LCD_CY, z_front, esp_x0 + 4.0, ESP_CY, z_back
-        ),
         "CAM→ESP": _cable(
-            CAM_CX - CAM_BOARD_W / 2, CAM_CY, z_front, esp_x0 + 4.0, ESP_CY, z_back
+            CAM_CX + CAM_BOARD_W / 2, CAM_CY, z_back, esp_x0 + 4.0, ESP_CY, z_back
         ),
         "MOD→ESP": _cable(
             MODEM_CX + MODEM_W / 2, MODEM_CY, z_back, esp_x0 + 4.0, ESP_CY, z_back
@@ -650,9 +795,204 @@ def audit() -> dict:
         "pwr": (pwr_lo, pwr_hi),
         "back_clear": back_clear,
         "lens": (lens_x, lens_y),
+        "cam_win": (win_x, win_y),
         "switch": (SW_CX, SW_CY),
         "cables": cables,
     }
+
+
+def _point_in_solid(shape, pt: tuple[float, float, float], tol: float = 1e-4) -> bool:
+    try:
+        return bool(shape.isInside(pt, tol))
+    except Exception:
+        from OCP.BRepClass3d import BRepClass3d_SolidClassifier
+        from OCP.gp import gp_Pnt
+        from OCP.TopAbs import TopAbs_IN, TopAbs_ON
+
+        c = BRepClass3d_SolidClassifier(shape.wrapped, gp_Pnt(*pt), tol)
+        return c.State() in (TopAbs_IN, TopAbs_ON)
+
+
+def audit_through_holes(front: cq.Workplane, back: cq.Workplane) -> list[str]:
+    """外开孔壁中采样点必须为空，禁止留皮。"""
+    issues: list[str] = []
+    f, b = front.val(), back.val()
+
+    def check(shape, mid_pt, name: str) -> None:
+        if _point_in_solid(shape, mid_pt):
+            issues.append(f"外孔未贯通（留皮）: {name}")
+
+    lx = CAM_CX + CAM_LENS_DX
+    ly = CAM_CY + CAM_LENS_DY
+    check(f, (LCD_CX, LCD_CY, 1.0), "LCD视窗")
+    # 板区外表面应保持实体（禁止整板外凹打穿）
+    if not _point_in_solid(f, (LCD_CX + LCD_BOARD_W / 2 - 3.0, LCD_CY, 0.5)):
+        issues.append("屏板区外表面被打穿（应平整留壁）")
+    check(f, (0.0, EAR_Y, SPLIT_Z - EAR_FRONT_H / 2), "前壳挂绳孔")
+
+    check(b, (USBC_X, -OUTER_W / 2 + 1.0, USBC_Z_B), "底USB-C")
+    check(b, (OUTER_L / 2 - 1.0, ESP_CY, ESP_USB_Z), "右ESP-USB")
+    check(b, (SW_CX, SW_CY, 1.0), "背开关槽")
+    # 开关槽不得挖穿电源舱底板
+    if not _point_in_solid(b, (SW_CX, SW_CY, WALL + 1.2)):
+        issues.append("开关槽过深，电源舱底板被挖穿")
+    check(b, (lx, ly, 1.0), "后壳镜头区")
+    wx, wy = cam_win_center(lx, ly)
+    check(b, (wx, wy, 1.0), "后壳摄像窗25×10")
+    # 窗四边中点也须贯通
+    for name, pt in [
+        ("摄像窗上", (wx, wy + CAM_WIN_H / 2 - 1.0, 1.0)),
+        ("摄像窗下", (wx, wy - CAM_WIN_H / 2 + 1.0, 1.0)),
+        ("摄像窗左", (wx - CAM_WIN_W / 2 + 1.0, wy, 1.0)),
+        ("摄像窗右", (wx + CAM_WIN_W / 2 - 1.0, wy, 1.0)),
+    ]:
+        check(b, pt, name)
+    if not _point_in_solid(b, (CAM_CX, CAM_CY - CAM_BOARD_H / 2 + 5.0, 0.5)):
+        issues.append("摄像板区后壳外表面被打穿（应平整留壁）")
+    check(b, (ANT_CABLE_X, OUTER_W / 2 - 1.0, 11.0), "顶天线孔")
+    check(b, (0.0, EAR_Y, (OUTER_H - SPLIT_Z) - EAR_BACK_H / 2), "后壳挂绳孔")
+    return issues
+
+
+def audit_clip_fit(front: cq.Workplane, back: cq.Workplane) -> list[str]:
+    """合盖后：勾在卡窗中空；口上台肩够厚；窗端立柱实心（过梁不悬空）。"""
+    issues: list[str] = []
+    if CLIP_RIM_KEEP < 2.5:
+        issues.append(f"卡扣台肩厚 CLIP_RIM_KEEP={CLIP_RIM_KEEP} < 2.5")
+    back_m = mate_back(back)
+    f, b = front.val(), back_m.val()
+    hook_bot_w = SPLIT_Z - 0.35 + CLIP_H - 1.35
+    catch_w = SPLIT_Z + CLIP_RIM_KEEP
+    seat_gap = hook_bot_w - catch_w
+    if not (0.12 <= seat_gap <= 0.55):
+        issues.append(f"卡扣台肩间隙 {seat_gap:.2f}mm（目标≈{CLIP_SEAT}）")
+    hz = hook_bot_w + 0.55
+    rim_mid_w = SPLIT_Z + CLIP_RIM_KEEP / 2
+    hb = OUTER_H - SPLIT_Z
+    z1 = hb - CLIP_RIM_KEEP
+    win_z = CLIP_H + 0.5
+    z0 = z1 - win_z
+    # 立柱中段合盖坐标
+    pillar_z_w = SPLIT_Z + hb - (z0 + win_z / 2)
+    win_along = CLIP_W + 1.2
+    for i, (cx, cy, ox, oy) in enumerate(CLIPS):
+        if abs(oy) > abs(ox):
+            sgn = 1.0 if cy > 0 else -1.0
+            tip = (cx, sgn * (INNER_Y + HOOK - 0.15), hz)
+            ledge = (cx, sgn * (OUTER_W / 2 - 0.45), rim_mid_w)
+            # 筋与壁交界处必须实心（两段已拼上）
+            join = (cx, sgn * (INNER_Y - 0.05), SPLIT_Z - 1.0)
+            root = (cx, sgn * (INNER_Y + WALL / 2 - 0.2), SPLIT_Z - 2.5)
+            pillar = (
+                cx + (win_along / 2 - CLIP_PILLAR_W / 2),
+                sgn * (OUTER_W / 2 - WALL / 2),
+                pillar_z_w,
+            )
+        else:
+            sgn = 1.0 if cx > 0 else -1.0
+            tip = (sgn * (INNER_X + HOOK - 0.15), cy, hz)
+            ledge = (sgn * (OUTER_L / 2 - 0.45), cy, rim_mid_w)
+            join = (sgn * (INNER_X - 0.05), cy, SPLIT_Z - 1.0)
+            root = (sgn * (INNER_X + WALL / 2 - 0.2), cy, SPLIT_Z - 2.5)
+            pillar = (
+                sgn * (OUTER_L / 2 - WALL / 2),
+                cy + (win_along / 2 - CLIP_PILLAR_W / 2),
+                pillar_z_w,
+            )
+        if not _point_in_solid(f, tip):
+            issues.append(f"卡扣{i} 勾尖不在前壳实体")
+            continue
+        if not _point_in_solid(f, join):
+            issues.append(f"卡扣{i} 勾与内壁未拼上（仍有缝）")
+        if not _point_in_solid(f, root):
+            issues.append(f"卡扣{i} 根部悬空（未连前壳壁）")
+        if _point_in_solid(b, tip):
+            issues.append(f"卡扣{i} 勾尖与后壳干涉")
+        elif not _point_in_solid(b, ledge):
+            issues.append(f"卡扣{i} 口上台肩缺失")
+        elif not _point_in_solid(b, pillar):
+            issues.append(f"卡扣{i} 过梁立柱缺失（仍会悬空）")
+        elif hz < catch_w:
+            issues.append(f"卡扣{i} 勾齿未越过台肩")
+    return issues
+
+
+def audit_strap_ear(front: cq.Workplane, back: cq.Workplane) -> list[str]:
+    """挂绳耳合盖后应对接，圆孔同轴贯通。"""
+    issues: list[str] = []
+    back_m = mate_back(back)
+    f, b = front.val(), back_m.val()
+    # 合盖面两侧各 1mm 应都有耳实体
+    if not _point_in_solid(f, (EAR_W / 3, EAR_Y, SPLIT_Z - 1.0)):
+        issues.append("前壳挂绳耳未到达合盖面")
+    if not _point_in_solid(b, (EAR_W / 3, EAR_Y, SPLIT_Z + 1.0)):
+        issues.append("后壳挂绳耳未到达合盖面（合不上）")
+    # 孔心应空
+    if _point_in_solid(f, (0.0, EAR_Y, SPLIT_Z - EAR_FRONT_H / 2)):
+        issues.append("前壳挂绳孔未打通")
+    if _point_in_solid(b, (0.0, EAR_Y, SPLIT_Z + EAR_BACK_H / 2)):
+        issues.append("后壳挂绳孔未打通")
+    return issues
+
+
+def audit_lip_joined(front: cq.Workplane) -> list[str]:
+    """前壳止口外沿必须与内壁连成一体（无缩进缝）。"""
+    issues: list[str] = []
+    f = front.val()
+    z = SPLIT_Z + LIP / 2
+    # 止口嵌入量：外廓相对内腔
+    embed = (_LIP_OUT_L - (OUTER_L - 2 * WALL)) / 2
+    if embed < 0.35:
+        issues.append(f"前壳止口嵌入内壁仅 {embed:.2f}mm（易留缝）")
+    join_pts = [
+        (0.0, INNER_Y - 0.05, z),
+        (0.0, -(INNER_Y - 0.05), z),
+        (INNER_X - 0.05, 0.0, z),
+        (-(INNER_X - 0.05), 0.0, z),
+    ]
+    for p in join_pts:
+        if not _point_in_solid(f, p):
+            issues.append(f"前壳止口与内壁未拼上 @({p[0]:.1f},{p[1]:.1f})")
+            break
+    wall_pts = [
+        (0.0, INNER_Y + embed / 2, z),
+        (INNER_X + embed / 2, 0.0, z),
+    ]
+    for p in wall_pts:
+        if not _point_in_solid(f, p):
+            issues.append(f"前壳止口未嵌入外壁 @({p[0]:.1f},{p[1]:.1f})")
+            break
+    return issues
+
+
+def audit_rim_corners(back: cq.Workplane) -> list[str]:
+    """后壳止口槽四角留壁 ≥ MIN_RIM_WALL（等距圆角，不削穿）。"""
+    issues: list[str] = []
+    if MIN_RIM_WALL < 0.5:
+        issues.append(f"MIN_RIM_WALL={MIN_RIM_WALL} < 0.5")
+    if abs(_GROOVE_R - (CORNER_R - MIN_RIM_WALL)) > 0.05:
+        issues.append("止口槽圆角未按外壁等距偏移")
+    b = back.val()
+    hb = OUTER_H - SPLIT_Z
+    z = hb - LIP / 2
+    s2 = math.sqrt(2.0) / 2.0
+    # 四角：圆角圆心 → 对角线方向取样
+    for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+        cx0 = sx * (OUTER_L / 2 - CORNER_R)
+        cy0 = sy * (OUTER_W / 2 - CORNER_R)
+        # 留壁中线应实心
+        r_mid = CORNER_R - MIN_RIM_WALL / 2
+        mid = (cx0 + sx * r_mid * s2, cy0 + sy * r_mid * s2, z)
+        if not _point_in_solid(b, mid):
+            issues.append(f"后壳止口四角壁厚缺失 @({mid[0]:.1f},{mid[1]:.1f})")
+            break
+        # 刚进槽内应为空（确认槽在，且未把外圈整段挖没）
+        r_in = CORNER_R - MIN_RIM_WALL - 0.25
+        inside = (cx0 + sx * r_in * s2, cy0 + sy * r_in * s2, z)
+        if _point_in_solid(b, inside):
+            issues.append(f"后壳止口槽四角未挖通 @({inside[0]:.1f},{inside[1]:.1f})")
+            break
+    return issues
 
 
 def main() -> None:
@@ -667,23 +1007,73 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     front = shell_front()
     back = shell_back()
-    preview = front.union(back.translate((0, 0, SPLIT_Z + 0.8)))
+    hole_issues = audit_through_holes(front, back)
+    if hole_issues:
+        print("AUDIT FAIL (through-holes):")
+        for i in hole_issues:
+            print("  !!", i)
+        raise SystemExit(1)
+    clip_issues = audit_clip_fit(front, back)
+    if clip_issues:
+        print("AUDIT FAIL (clips):")
+        for i in clip_issues:
+            print("  !!", i)
+        raise SystemExit(1)
+    ear_issues = audit_strap_ear(front, back)
+    if ear_issues:
+        print("AUDIT FAIL (strap ear):")
+        for i in ear_issues:
+            print("  !!", i)
+        raise SystemExit(1)
+    lip_issues = audit_lip_joined(front)
+    if lip_issues:
+        print("AUDIT FAIL (lip):")
+        for i in lip_issues:
+            print("  !!", i)
+        raise SystemExit(1)
+    rim_issues = audit_rim_corners(back)
+    if rim_issues:
+        print("AUDIT FAIL (rim corners):")
+        for i in rim_issues:
+            print("  !!", i)
+        raise SystemExit(1)
+
+    preview = front.union(mate_back(back))
     cq.exporters.export(front, str(out / "saoti_front.stl"))
     cq.exporters.export(back, str(out / "saoti_back.stl"))
     cq.exporters.export(preview, str(out / "saoti_assembled_preview.stl"))
 
-    print("OK v7.5 ->", out)
+    print("OK v7.36 ->", out)
     print(f"  外廓 {OUTER_L}×{OUTER_W}×{OUTER_H}  前{SPLIT_Z}/后{OUTER_H - SPLIT_Z}")
     print(f"  容错 TOL={TOL} POCKET={POCKET} WALL_GAP={WALL_GAP} HOOK={HOOK}")
-    print(f"  LCD-CAM缝 {a['gap_lcd_cam']:.1f}  ESP-PWR缝 {a['gap_esp_pwr']:.1f}")
-    print(f"  电源→底内壁 {a['pwr_to_bottom']:.1f}mm  ESP→右内壁 {a['esp_to_right']:.1f}mm")
-    print(f"  BOOT 腰圆 @ ({BOOT_CX:.1f},{BOOT_CY:.1f}) 后壳  ESP USB→右侧壁")
     print(
-        f"  双键模块 @ 左壁 Y={BTN_CY:.1f} Z={BTN_Z_B:.1f}"
-        f"  口袋{BTN_MOD_L:.0f}×{BTN_MOD_W:.0f} 键距{BTN_PITCH} 方孔{BTN_CAP:.0f}"
+        f"  止口四角留壁 MIN_RIM_WALL={MIN_RIM_WALL}"
+        f" 槽R={_GROOVE_R:.1f} 唇R={_LIP_OUT_R:.1f} 合盖间隙{LIP_GROOVE_CLEAR}"
     )
-    print(f"  摄像板 {CAM_BOARD_W}×{CAM_BOARD_H} 矩形；镜头孔偏 ({a['lens'][0]:.1f},{a['lens'][1]:.1f})")
-    print(f"  开关槽 @ ({a['switch'][0]:.1f},{a['switch'][1]:.1f}) 后壳背面 尺寸{SW_SLOT_W}×{SW_SLOT_H}")
+    print(f"  屏前/摄后 中心距Y {a['gap_lcd_cam']:.1f}  ESP-PWR缝 {a['gap_esp_pwr']:.1f}")
+    print(f"  电源→底内壁 {a['pwr_to_bottom']:.1f}mm  ESP→右内壁 {a['esp_to_right']:.1f}mm")
+    print(
+        f"  卡扣 {len(CLIPS)}枚 贴壁(_yw={_yw:.2f}/_xw={_xw:.2f})"
+        f" EMBED={CLIP_EMBED} HOOK={HOOK} CLIP_H={CLIP_H} LIP={LIP}"
+    )
+    print("  外孔: 前屏窗 | 后摄像窗25×10 | 底充电USB | 右烧录USB 12×5 | 背开关 | 顶天线 | 挂绳")
+    print("  开发板按键: 不开壳孔")
+    print(
+        f"  ESP舱 支撑板厚{ESP_DECK_H} 围边{ESP_RIM_H}"
+        f"  烧录口{ESP_USB_W}×{ESP_USB_H} @Z={ESP_USB_Z:.1f}"
+    )
+    print(
+        f"  摄像(后壳) PCB{CAM_PCB_L}×{CAM_PCB_W} 占位{CAM_BOARD_W}×{CAM_BOARD_H}"
+        f" @({CAM_CX:.0f},{CAM_CY:.0f}) 镜头({a['lens'][0]:.1f},{a['lens'][1]:.1f})"
+        f" 外窗{CAM_WIN_H}×{CAM_WIN_W}@({a['cam_win'][0]:.1f},{a['cam_win'][1]:.1f})"
+    )
+    print(f"  屏 AA={LCD_AA} 开窗={LCD_VIEW:.1f} 板{LCD_BOARD_W}×{LCD_BOARD_H} 外表面留壁{FACE_LIP}")
+    print(
+        f"  开关槽 @ ({a['switch'][0]:.1f},{a['switch'][1]:.1f})"
+        f"  距电源底{SW_FROM_PWR_BOTTOM:.0f} 拨钮{SW_BTN_LEN:.0f}"
+        f"  槽{SW_SLOT_W:.0f}×{SW_SLOT_H:.1f}"
+    )
+    print(f"  电源占位 {PWR_LEN_X:.0f}×{PWR_WID_Y:.0f}×{PWR_H:.0f}")
     print(
         f"  后仓净高 {a['back_clear']:.1f}mm（目标≥{BACK_STACK_H:.0f}）"
         f"  杜邦侧向 {DUPONT_SIDE_CLEAR} 线舱Z {WIRE_LOFT_Z}"

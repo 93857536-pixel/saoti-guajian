@@ -48,9 +48,16 @@ constexpr int MODEM_NET_STATUS = -1;
 
 // ── 按键（2 位独立按键模块）──────────────────────────────
 // 模块常见丝印：GND + KEY1 + KEY2（按下拉低；ESP 内部上拉）
-// KEY1→GPIO0 扫题；KEY2→GPIO42 固定题测 AI；板载 BOOT 可并联 KEY1
+// KEY1→GPIO0 扫题；KEY2→GPIO42 唤醒/休眠切换；板载 BOOT 可并联 KEY1
 constexpr int BUTTON = 0;
 constexpr int BUTTON2 = 42;
+
+// ── UART TTS（XFS5152 / SYN6288 同类串口语音合成）────────
+// ESP TX(GPIO45) → 模块 RX；可选 BUSY(GPIO46)←模块 BUSY；喇叭接模块功放
+// 与 A7670 的 Serial2 分开，使用 Serial1
+constexpr int TTS_TX = 45;
+constexpr int TTS_RX = -1;   // 多数模块只收不发，可不接
+constexpr int TTS_BUSY = 46; // -1 = 不用忙线，按字数延时
 
 // ── 电池电压 ADC（需分压，见 WIRING.md）──────────────────
 // 电池+ → 100k → GPIO14 → 100k → GND（分压比 2）

@@ -23,3 +23,15 @@ companion/build/
 .idea/
 *.swp
 *~
+
+# Local / temp captures & print packages
+capture_preview.jpg
+tmp_*.jpg
+*.zip
+!**/vendor/**/*.zip
+
+# Regenerable CAD intermediates (keep front/back + assembled preview)
+hardware/case/stl/saoti_packed_*.stl
+hardware/case/stl/saoti_packed_*.step
+hardware/case/saoti_*.stl
+hardware/case/saoti_*.step

@@ -20,14 +20,10 @@ String gLastError;
 uint32_t gAnswerAtMs = 0;
 Modem* gModem = nullptr;
 
-// 智谱视觉模型池（429/繁忙时自动换下一个，不永久拉黑）
+// 智谱视觉模型池：付费最强 → 失败直接免费 flash（无中间档）
 const char* kVisionModels[] = {
-    "glm-4v-flash",              // 免费视觉，相对稳
-    "glm-4.6v-flash",
-    "glm-4.1v-thinking-flash",
-    "glm-4v",
-    "glm-4.5v",
-    "glm-4.6v",
+    "glm-4.6v",      // 付费最强视觉（首选）
+    "glm-4v-flash",  // 用不了就直接换这个
 };
 constexpr int kVisionModelCount =
     static_cast<int>(sizeof(kVisionModels) / sizeof(kVisionModels[0]));
@@ -66,10 +62,11 @@ void loadPool() {
   gExhaustedMask = gPrefs.getUInt("exh", 0);
   const int8_t pref = gPrefs.getChar("pref", -1);
   const int configured = findModelIndex(OPENAI_MODEL);
-  if (pref >= 0 && pref < kVisionModelCount) {
-    gPreferredIndex = pref;
-  } else if (configured >= 0) {
+  // 编译配置的 OPENAI_MODEL 优先于 NVS 旧首选（避免一直停在以前的 flash）
+  if (configured >= 0) {
     gPreferredIndex = configured;
+  } else if (pref >= 0 && pref < kVisionModelCount) {
+    gPreferredIndex = pref;
   } else {
     gPreferredIndex = 0;
   }
