@@ -42,6 +42,10 @@ struct WatchContentView: View {
                         Text(proxy.answer)
                             .font(.caption2)
                     }
+                } else if !proxy.lastError.isEmpty {
+                    Text(proxy.lastError)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
                 }
             }
             .padding(.horizontal, 6)
@@ -55,6 +59,7 @@ struct WatchContentView: View {
         case "capturing": return "拍照中"
         case "uploading": return "解题中"
         case "result": return "已出答案"
+        case "error": return "出错"
         default: return proxy.sleeping ? "休眠" : "就绪"
         }
     }

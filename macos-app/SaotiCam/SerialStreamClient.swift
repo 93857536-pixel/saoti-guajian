@@ -84,8 +84,13 @@ final class SerialStreamClient: ObservableObject {
         let activeID = connectionID
         serialQueue.async { [weak self] in
             guard let self, self.connectionID == activeID else { return }
-            _ = self.waitForUSBReady(timeoutSeconds: 12)
+            let ready = self.waitForUSBReady(timeoutSeconds: 12)
             guard self.connectionID == activeID, self.shouldRun, self.fd >= 0 else { return }
+            if !ready {
+                DispatchQueue.main.async {
+                    self.statusText = "未等到 USB ready，仍尝试启动推流（请确认推流固件）"
+                }
+            }
             _ = self.writeBytes([0x76])
             usleep(200_000)
             self.drainInput(forMilliseconds: 100)
@@ -194,6 +199,9 @@ final class SerialStreamClient: ObservableObject {
         // Custom baud must be applied AFTER tcsetattr (pyserial/macOS requirement).
         var speed = baudRate
         if ioctl(fd, CUnsignedLong(kIOSSIOSPEED), &speed) == -1 {
+            DispatchQueue.main.async {
+                self.statusText = "921600 设置失败，已回退 115200（推流可能无画面）"
+            }
             var fallback = termios()
             guard tcgetattr(fd, &fallback) == 0 else { return false }
             cfsetispeed(&fallback, speed_t(B115200))
@@ -444,7 +452,10 @@ final class SerialStreamClient: ObservableObject {
             return []
         }
         return entries
-            .filter { $0.hasPrefix("cu.usb") || $0.hasPrefix("cu.wchusb") || $0.hasPrefix("cu.SLAB") }
+            .filter {
+                $0.hasPrefix("cu.usb") || $0.hasPrefix("cu.wchusb") || $0.hasPrefix("cu.SLAB")
+                    || $0.hasPrefix("cu.usbmodem") || $0.hasPrefix("cu.usbserial")
+            }
             .map { "/dev/\($0)" }
             .sorted()
     }

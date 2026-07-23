@@ -56,7 +56,10 @@ struct RootView: View {
                 if hub.isConnected {
                     Button("断开") { hub.disconnect() }
                 } else {
-                    Button("连接") { hub.connect() }
+                    Button("连接") {
+                        disconnectLive()
+                        hub.connect()
+                    }
                         .keyboardShortcut(.return, modifiers: [])
                 }
             }
@@ -108,7 +111,10 @@ struct RootView: View {
                     .lineLimit(2)
                 Spacer()
                 if !hub.isConnected {
-                    Button("连接") { hub.refreshAndConnectIfPossible() }
+                    Button("连接") {
+                        disconnectLive()
+                        hub.refreshAndConnectIfPossible()
+                    }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
                 }

@@ -47,8 +47,13 @@ final class BleClient: NSObject, ObservableObject {
     private var thumbBuf = Data()
     private var thumbExpected = 0
     private var collectingAnswer = false
+    private var answerExpected = 0
     private var scanDeadline: Date?
+    private var scanTimeoutTask: Task<Void, Never>?
+    private var autoConnectTask: Task<Void, Never>?
     private var autoConnectNamePrefix = SaotiBle.namePrefix
+    /// 用户主动断开后不自动重连
+    private var userDisconnected = false
 
     private let defaultsKeyLastId = "saoti.lastPeripheralId"
 
@@ -67,6 +72,9 @@ final class BleClient: NSObject, ObservableObject {
 
     func startScan(autoConnect: Bool = true) {
         devices.removeAll()
+        userDisconnected = false
+        scanTimeoutTask?.cancel()
+        autoConnectTask?.cancel()
         if #available(iOS 13.1, macOS 10.15, *) {
             if CBCentralManager.authorization == .denied {
                 state = .unauthorized
@@ -118,15 +126,40 @@ final class BleClient: NSObject, ObservableObject {
             CBCentralManagerScanOptionAllowDuplicatesKey: true
         ])
         log("App 内扫描中…对照挂件屏幕 Saoti-*（系统设置里搜不到属正常）")
+
+        scanTimeoutTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            guard !Task.isCancelled, self.state == .scanning else { return }
+            self.stopScan()
+            self.log("扫描超时（30s）— 请靠近挂件后重试")
+        }
+
+        if autoConnect {
+            autoConnectTask = Task { @MainActor in
+                // 等 RSSI 稳定后再连最强的，避免连到第一个弱信号
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard !Task.isCancelled, self.state == .scanning else { return }
+                if let best = self.devices
+                    .filter({ $0.name.hasPrefix(self.autoConnectNamePrefix) })
+                    .max(by: { $0.rssi < $1.rssi }) {
+                    self.connect(best)
+                }
+            }
+        }
     }
 
     func stopScan() {
         central.stopScan()
         scanDeadline = nil
+        scanTimeoutTask?.cancel()
+        scanTimeoutTask = nil
+        autoConnectTask?.cancel()
+        autoConnectTask = nil
         if state == .scanning { state = .disconnected }
     }
 
     func connect(_ device: DiscoveredPendant) {
+        userDisconnected = false
         stopScan()
         peripheral = device.peripheral
         peripheral?.delegate = self
@@ -140,9 +173,13 @@ final class BleClient: NSObject, ObservableObject {
     }
 
     func disconnect() {
+        userDisconnected = true
+        scanTimeoutTask?.cancel()
+        autoConnectTask?.cancel()
         if let p = peripheral { central.cancelPeripheralConnection(p) }
         clearSession()
         state = .disconnected
+        log("已手动断开")
     }
 
     func sendCommand(_ cmd: String) {
@@ -174,6 +211,8 @@ final class BleClient: NSObject, ObservableObject {
         peripheral = nil
         cmdChar = nil
         answerBuf.removeAll()
+        collectingAnswer = false
+        answerExpected = 0
         thumbBuf.removeAll()
         thumbExpected = 0
     }
@@ -203,22 +242,38 @@ final class BleClient: NSObject, ObservableObject {
         if let s = String(data: data, encoding: .utf8), s.hasPrefix("LEN:") {
             answerBuf.removeAll()
             collectingAnswer = true
-            if let nl = s.firstIndex(of: "\n") {
-                let rest = String(s[s.index(after: nl)...])
+            answerExpected = 0
+            // LEN:<n>\n<body...>
+            let after = s.dropFirst(4)
+            if let nl = after.firstIndex(of: "\n") {
+                answerExpected = Int(after[..<nl]) ?? 0
+                let rest = String(after[after.index(after: nl)...])
                 answerBuf.append(Data(rest.utf8))
+            } else if let n = Int(after.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                answerExpected = n
             }
+            finalizeAnswerIfComplete()
             return
         }
         if collectingAnswer {
             answerBuf.append(data)
-            if let text = String(data: answerBuf, encoding: .utf8), !text.isEmpty {
-                answerText = text
-                answers.push(text)
-            }
+            finalizeAnswerIfComplete()
         } else if let text = String(data: data, encoding: .utf8) {
             answerText = text
             answers.push(text)
         }
+    }
+
+    private func finalizeAnswerIfComplete() {
+        guard collectingAnswer else { return }
+        if answerExpected > 0, answerBuf.count < answerExpected { return }
+        if let text = String(data: answerBuf, encoding: .utf8), !text.isEmpty {
+            answerText = text
+            answers.push(text)
+        }
+        collectingAnswer = false
+        answerExpected = 0
+        answerBuf.removeAll(keepingCapacity: false)
     }
 
     private func handleThumb(_ data: Data) {
@@ -300,13 +355,10 @@ extension BleClient: CBCentralManagerDelegate {
                 self.devices[idx] = item
             } else {
                 self.devices.append(item)
-                self.devices.sort { $0.rssi > $1.rssi }
                 self.log("发现 \(display)  \(RSSI.intValue) dBm")
-                // 自动连接最强信号的 Saoti
-                if self.state == .scanning, display.hasPrefix(self.autoConnectNamePrefix) {
-                    self.connect(item)
-                }
             }
+            self.devices.sort { $0.rssi > $1.rssi }
+            // 自动连接改由 startScan 里延时选最强，避免连到首个弱信号
         }
     }
 
@@ -338,9 +390,13 @@ extension BleClient: CBCentralManagerDelegate {
         Task { @MainActor in
             self.clearSession()
             self.state = .disconnected
+            if self.userDisconnected {
+                self.log("已断开（手动，不自动重连）")
+                return
+            }
             self.log("已断开 — 3 秒后自动重连")
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            if self.state == .disconnected {
+            if self.state == .disconnected, !self.userDisconnected {
                 self.startScan(autoConnect: true)
             }
         }
@@ -385,6 +441,11 @@ extension BleClient: CBPeripheralDelegate {
         error: Error?
     ) {
         Task { @MainActor in
+            if let error {
+                self.log("GATT 特征发现失败: \(error.localizedDescription)")
+                self.state = .disconnected
+                return
+            }
             guard let chars = service.characteristics else { return }
             for c in chars {
                 switch c.uuid {
@@ -398,6 +459,11 @@ extension BleClient: CBPeripheralDelegate {
                 default:
                     break
                 }
+            }
+            guard self.cmdChar != nil else {
+                self.log("GATT 缺少命令特征，未就绪")
+                self.state = .disconnected
+                return
             }
             self.state = .ready
             self.log("GATT 就绪")

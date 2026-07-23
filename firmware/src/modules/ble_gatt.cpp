@@ -47,6 +47,7 @@ BLECharacteristic* gEvent = nullptr;
 volatile bool gConnected = false;
 volatile bool gNeedStatus = false;
 volatile bool gNeedAnswer = false;
+volatile bool gNeedAdvRestart = false;
 bool gStarted = false;
 char gAdvName[20] = "Saoti";
 char gPhase[24] = "idle";
@@ -147,15 +148,13 @@ class ServerCallbacks : public BLEServerCallbacks {
     gConnected = true;
     gNeedStatus = true;
     Serial.println("[BLE] connected");
-    // 连接后继续广播，避免「已占线」导致第二台手机永远扫不到
-    delay(80);
-    startAdvInternal();
+    // 勿在回调里 delay/重配广播（会弄断 iPhone）；交 loop 处理
+    gNeedAdvRestart = true;
   }
   void onDisconnect(BLEServer*) override {
     gConnected = false;
-    Serial.println("[BLE] disconnected — restart advertising");
-    delay(120);
-    startAdvInternal();
+    Serial.println("[BLE] disconnected — schedule advertising");
+    gNeedAdvRestart = true;
   }
 };
 
@@ -351,6 +350,15 @@ bool selfCheck() {
 void loop() {
   if (!gStarted) {
     return;
+  }
+  if (gNeedAdvRestart) {
+    gNeedAdvRestart = false;
+    // 断连后稍等再广播；已连接时 startAdvInternal 不会 stop
+    if (!gConnected) {
+      delay(50);
+    }
+    startAdvInternal();
+    gLastAdvKickMs = millis();
   }
   if (!gPendingEvent.isEmpty() && gEvent && gConnected) {
     notifyText(gEvent, gPendingEvent);

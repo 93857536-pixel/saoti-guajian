@@ -1,6 +1,7 @@
 #include "config.h"
 #include "modules/modem.h"
 #include "modules/solver.h"
+#include "service_tick.h"
 
 #if USE_OPENAI_SOLVER
 
@@ -296,9 +297,10 @@ char* buildRequestJson(const char* model, const char* b64, size_t b64Len,
   const char* p2 =
       "\"}},"
       "{\"type\":\"text\",\"text\":\"你是扫题挂件助手。请尽力识别图片中的题目文字"
-      "（即使略模糊/倾斜也请尝试辨认）。用中文给出：1)最终答案 "
+      "（即使略模糊、倾斜、偏暗也请尝试辨认）。用中文给出：1)最终答案 "
       "2)简要解题步骤（尽量简洁，适合小屏幕）。"
-      "仅当完全无法辨认任何题目内容时，才回复看不清请重新拍照。\"}]}]}";
+      "只有整张图完全空白、全黑、或完全没有任何文字/题目痕迹时，"
+      "才回复：看不清请重新拍照。只要能认出部分题干或选项，就给出答案或最可能答案。\"}]}]}";
 
   const size_t jsonLen =
       strlen(p0) + strlen(model) + strlen(p1) + b64Len + strlen(p2);
@@ -577,7 +579,7 @@ SolveResult Solver::solveJpeg(const uint8_t* jpeg, size_t len) {
     // 4G TLS 偶发 HTTP -1/空包：同模型立即重试一次
     if (!okHttp && (code < 0 || body.length() == 0)) {
       Serial.println("[AI] empty/transport fail — retry once");
-      delay(500);
+      serviceDelay(500);
       okHttp = postOnce(model, json, jsonLen, &code, &body);
     }
     free(json);
@@ -588,11 +590,10 @@ SolveResult Solver::solveJpeg(const uint8_t* jpeg, size_t len) {
     if (okHttp) {
       String answer = extractAssistantContent(body);
       if (answer.isEmpty()) {
-        free(b64);
-        r.error = "parse answer fail";
-        solverSetLastError(r.error);
+        Serial.printf("[AI] parse fail on %s — try next model\n", model);
         Serial.println(body.substring(0, 500));
-        return r;
+        lastBody = body;
+        continue;
       }
       answer.trim();
       if (gPreferredIndex != idx) {
@@ -614,7 +615,7 @@ SolveResult Solver::solveJpeg(const uint8_t* jpeg, size_t len) {
     if (isTransientBusy(code, body)) {
       sawTransientBusy = true;
       Serial.printf("[AI] busy/429 on %s → try next model\n", model);
-      delay(400);
+      serviceDelay(400);
       continue;
     }
 

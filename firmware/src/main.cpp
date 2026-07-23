@@ -1,6 +1,7 @@
 #include "config.h"
 #include "pins.h"
 #include "app_control.h"
+#include "service_tick.h"
 
 #include <vector>
 #include "modules/answer_ap.h"
@@ -223,21 +224,65 @@ bool runBleSelfCheck(void (*showStep)(int, const char*), int stepIndex) {
 #endif
 }
 
-bool wakePeripherals(const char* reason) {
+bool wakePeripherals(const char* reason, bool quietUi = false) {
   noteUiActivity();
   const bool needCam = camera.isSleeping();
   const bool needModem = modem.radioSleeping();
   // 外设已醒：已连接则不要重广播（会弄断 iPhone）；未连接再自检广播
   if (!needCam && !needModem) {
     display.setBacklight(true);
-    Serial.printf("[PWR] light selfcheck ble (%s)\n", reason ? reason : "?");
+    Serial.printf("[PWR] light selfcheck ble (%s quiet=%d)\n",
+                  reason ? reason : "?", quietUi ? 1 : 0);
 #if BLE_GATT_ENABLE
     if (ble_gatt::isConnected()) {
       return true;
     }
 #endif
+    if (quietUi) {
+      // 手机扫题中途：勿弹自检页，静默保活广播即可
+      ble_gatt::restartAdvertising();
+      return ble_gatt::isReady();
+    }
     return runBleSelfCheck(showWakeSelfCheck, 3);
   }
+
+  // 手机已连接时的安静唤醒：只拉起外设，不走 6 步自检屏（避免「又从头开始」）
+  if (quietUi) {
+    Serial.printf("[PWR] quiet wake (%s) cam=%d modem=%d\n",
+                  reason ? reason : "?", needCam ? 1 : 0, needModem ? 1 : 0);
+    display.setBacklight(true);
+    bool ok = true;
+    if (needCam && !camera.wake()) {
+      Serial.println("[PWR] quiet wake: camera fail");
+      ok = false;
+    }
+    if (needModem && !modem.wakeRadio()) {
+      Serial.println("[PWR] quiet wake: modem fail");
+      ok = false;
+    }
+    if (ok && camera.isReady() && !camera.probeFrame()) {
+      Serial.println("[PWR] quiet wake: cam probe fail — recover");
+      ok = camera.wake() && camera.probeFrame();
+    }
+    if (ok && modem.isCellReady()) {
+      if (!modem.ensureCellNetwork()) {
+        Serial.println("[PWR] quiet wake: cell network fail");
+        ok = false;
+      }
+    } else if (ok && needModem) {
+      // 射频刚开，给一点时间再检；失败仍返回 false 让 App 侧看到错误
+      serviceDelay(800);
+      if (!modem.ensureCellNetwork()) {
+        Serial.println("[PWR] quiet wake: cell network fail after wake");
+        ok = false;
+      }
+    }
+    refreshNetBadge();
+    refreshBattBadge();
+    Serial.printf("[PWR] quiet wake done ok=%d\n", ok ? 1 : 0);
+    return ok;
+  }
+
   Serial.printf("[PWR] wake+selfcheck (%s)...\n", reason ? reason : "?");
   display.setBacklight(true);
   bool ok = true;
@@ -618,8 +663,10 @@ void runCapturePipeline() {
   // 未休眠时也会显示第 1 步，避免进度从中间跳出来
   showScanStep(1, "设备已就绪");
   showScanStep(2, "正在拍照，请勿移动…");
+  serviceTick();
   const CaptureResult cap = camera.capture();
   ble_gatt::restartAdvertising();
+  serviceTick();
 #if !USE_MOCK_CAMERA
   camera.setStreamingPaused(false);
 #endif
@@ -701,9 +748,16 @@ void runCapturePipeline() {
 #endif
 }
 
-// BOOT / 's'：有摄像头就拍照解题；无摄像头则自动用内置固定题图测 AI。
+// BOOT / 's' / 手机扫题：有摄像头就拍照解题；无摄像头则自动用内置固定题图测 AI。
 void triggerScanOrTest() {
-  if (!wakePeripherals("scan")) {
+  // 手机已连 BLE：安静唤醒，不要每次都走「唤醒摄像头/蓝牙/4G…」自检页
+  const bool quietUi =
+#if BLE_GATT_ENABLE
+      ble_gatt::isConnected();
+#else
+      false;
+#endif
+  if (!wakePeripherals("scan", quietUi)) {
     showErrorHold("wake failed");
     return;
   }
@@ -1223,6 +1277,11 @@ void setup() {
   Serial.begin(115200);
 #endif
   serialLockInit();
+  serviceTickRegister([]() {
+    ble_gatt::loop();
+    tts::loop();
+    yield();
+  });
   delay(500);
   Serial.println();
   Serial.println("=== saoti-guajian firmware ===");
@@ -1351,17 +1410,24 @@ void loop() {
   }
   if (appConsumeThumbRequest() && !gPipelineBusyFlag) {
     noteUiActivity();
-    // 取景同样只醒摄像头，避免 4G 自检卡住主循环
+#if USB_STREAM_ENABLE
+    const bool resumeUsb = usbStream.isActive();
+    usbStream.setActive(false);
+    serviceDelay(30);
+#endif
+    // 取景只醒摄像头，避免 4G 自检卡住主循环
     if (camera.isSleeping() || !camera.isReady()) {
       if (!camera.wake()) {
         ble_gatt::notifyEventJson(
             "{\"type\":\"thumb\",\"ok\":false,\"reason\":\"wake_fail\"}");
+#if USB_STREAM_ENABLE
+        if (resumeUsb) {
+          usbStream.setActive(true);
+        }
+#endif
+        return;
       }
     }
-#if USB_STREAM_ENABLE
-    usbStream.setActive(false);
-    delay(30);
-#endif
 #if !USE_MOCK_CAMERA
     camera.setStreamingPaused(true);
 #endif
@@ -1374,15 +1440,20 @@ void loop() {
 #if !USE_MOCK_CAMERA
     camera.setStreamingPaused(false);
 #endif
+#if USB_STREAM_ENABLE
+    if (resumeUsb) {
+      usbStream.setActive(true);
+    }
+#endif
     if (thumb.ok) {
       ble_gatt::sendThumbJpeg(thumb.jpeg.data(), thumb.jpeg.size());
       ble_gatt::notifyEventJson("{\"type\":\"thumb\",\"ok\":true}");
     } else {
-      char err[96];
-      snprintf(err, sizeof(err),
-               "{\"type\":\"thumb\",\"ok\":false,\"reason\":\"%s\"}",
-               thumb.error ? thumb.error : "capture");
-      ble_gatt::notifyEventJson(err);
+      // 固定 reason，避免错误串弄坏 JSON
+      ble_gatt::notifyEventJson(
+          "{\"type\":\"thumb\",\"ok\":false,\"reason\":\"capture\"}");
+      Serial.printf("[APP] thumb fail: %s\n",
+                    thumb.error ? thumb.error : "capture");
     }
   }
 
@@ -1525,7 +1596,15 @@ void loop() {
     }
     if (IDLE_PERIPH_SLEEP_MS > 0 && !periphSleeping() &&
         (millis() - last_ui_activity) >= IDLE_PERIPH_SLEEP_MS) {
-      enterPeriphSleep();
+#if BLE_GATT_ENABLE
+      // 手机连着时不睡摄像/4G，避免每次 App 扫题都先跑一整轮唤醒自检
+      if (ble_gatt::isConnected()) {
+        // 仅关背光省电；外设保持热待命
+      } else
+#endif
+      {
+        enterPeriphSleep();
+      }
     }
   }
 

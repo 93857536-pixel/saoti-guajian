@@ -39,8 +39,9 @@ constexpr int CAM_RESET = -1; // 微雪可悬空
 // 勿把模 TX 接到旧说明的 GPIO47（那是 PWK）；勿占 LCD 背光 GPIO41
 constexpr int MODEM_TX = 21;  // → 模 RX
 constexpr int MODEM_RX = 2;   // ← 模 TX
-constexpr int MODEM_TX_ALT = 42;
-constexpr int MODEM_RX_ALT = 45;
+// ALT 探测脚已停用：42=KEY2，45=TTS TX，避免与按键/语音冲突
+constexpr int MODEM_TX_ALT = -1;
+constexpr int MODEM_RX_ALT = -1;
 constexpr int MODEM_PWRKEY = 47;  // → 模 PWK / PWRKEY
 constexpr int MODEM_PEN = 48;     // → 模 PEN（使能，常高）
 constexpr int MODEM_RESET = -1;

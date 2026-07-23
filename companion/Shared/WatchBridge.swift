@@ -31,7 +31,8 @@ final class WatchBridge: NSObject, ObservableObject, WCSessionDelegate {
             "csq": status.csq,
             "busy": status.busy,
             "sleeping": status.sleeping,
-            "connected": ble?.state == .ready || ble?.state == .connected
+            "connected": ble?.state == .ready,
+            "last_error": status.lastError
         ]
         if !answer.isEmpty {
             ctx["answer"] = String(answer.prefix(400))
@@ -52,14 +53,25 @@ final class WatchBridge: NSObject, ObservableObject, WCSessionDelegate {
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         Task { @MainActor in
-            guard let cmd = message["cmd"] as? String else { return }
-            switch cmd {
-            case "scan": self.ble?.scanQuestion()
-            case "wake": self.ble?.wake()
-            case "status": self.ble?.sendCommand("status")
-            case "answer": self.ble?.requestAnswer()
-            default: break
-            }
+            self.handleWatchCommand(message)
+        }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        Task { @MainActor in
+            self.handleWatchCommand(userInfo)
+        }
+    }
+
+    @MainActor
+    private func handleWatchCommand(_ message: [String: Any]) {
+        guard let cmd = message["cmd"] as? String else { return }
+        switch cmd {
+        case "scan": self.ble?.scanQuestion()
+        case "wake": self.ble?.wake()
+        case "status": self.ble?.sendCommand("status")
+        case "answer": self.ble?.requestAnswer()
+        default: break
         }
     }
 }
@@ -75,6 +87,7 @@ final class WatchPhoneProxy: NSObject, ObservableObject, WCSessionDelegate {
     @Published var busy = false
     @Published var sleeping = false
     @Published var connected = false
+    @Published var lastError = ""
     @Published var answer = ""
 
     override init() {
@@ -90,7 +103,9 @@ final class WatchPhoneProxy: NSObject, ObservableObject, WCSessionDelegate {
             WCSession.default.transferUserInfo(["cmd": cmd])
             return
         }
-        WCSession.default.sendMessage(["cmd": cmd], replyHandler: nil, errorHandler: nil)
+        WCSession.default.sendMessage(["cmd": cmd], replyHandler: nil) { err in
+            print("Watch send fail: \(err.localizedDescription)")
+        }
     }
 
     nonisolated func session(
@@ -110,6 +125,7 @@ final class WatchPhoneProxy: NSObject, ObservableObject, WCSessionDelegate {
             self.busy = applicationContext["busy"] as? Bool ?? false
             self.sleeping = applicationContext["sleeping"] as? Bool ?? false
             self.connected = applicationContext["connected"] as? Bool ?? false
+            self.lastError = applicationContext["last_error"] as? String ?? ""
             if let a = applicationContext["answer"] as? String { self.answer = a }
         }
     }

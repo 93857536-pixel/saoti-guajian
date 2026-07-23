@@ -1,6 +1,7 @@
 #include "config.h"
 #include "pins.h"
 #include "modules/modem.h"
+#include "service_tick.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -247,6 +248,9 @@ bool modemProbeAll() {
       {pins::MODEM_TX_ALT, pins::MODEM_RX_ALT},
   };
   for (size_t pi = 0; pi < sizeof(pairs) / sizeof(pairs[0]); ++pi) {
+    if (pairs[pi][0] < 0 || pairs[pi][1] < 0) {
+      continue;
+    }
     for (uint32_t baud : primaryBauds) {
       if (modemProbePins(baud, pairs[pi][0], pairs[pi][1])) {
         modemSendAt("ATE0", 2000);
@@ -348,9 +352,27 @@ bool modemWaitSimReady(uint32_t timeoutMs = 45000) {
       Serial.printf("[NET] SIM not ready yet (%d): %s\n", attempt,
                     resp.length() ? resp.c_str() : "(empty)");
     }
-    delay(2000);
+    serviceDelay(2000);
   }
   Serial.println("[NET] SIM timeout — 卡座/方向/激活；蜗牛 App 开通流量后再测");
+  return false;
+}
+
+bool modemRegStatOk(const String& r) {
+  // +CEREG: <n>,<stat> / +CREG: <n>,<stat> — stat 为 1 或 5；勿用 indexOf(",1") 误匹配 ,10
+  for (int i = 0; i + 1 < static_cast<int>(r.length()); ++i) {
+    if (r[i] != ',') {
+      continue;
+    }
+    const char d = r[i + 1];
+    if (d != '1' && d != '5') {
+      continue;
+    }
+    const char next = (i + 2 < static_cast<int>(r.length())) ? r[i + 2] : ',';
+    if (next < '0' || next > '9') {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -359,17 +381,17 @@ bool modemWaitRegistered(uint32_t timeoutMs) {
   while (millis() - start < timeoutMs) {
     String r;
     modemSendAt("AT+CEREG?", 3000, &r);
-    if (r.indexOf(",1") >= 0 || r.indexOf(",5") >= 0) {
+    if (modemRegStatOk(r)) {
       Serial.println("[NET] LTE registered");
       return true;
     }
     modemSendAt("AT+CREG?", 3000, &r);
-    if (r.indexOf(",1") >= 0 || r.indexOf(",5") >= 0) {
+    if (modemRegStatOk(r)) {
       Serial.println("[NET] CS registered");
       return true;
     }
     modemSendAt("AT+CSQ", 3000);
-    delay(3000);
+    serviceDelay(3000);
   }
   Serial.println("[NET] register timeout (CREG/CEREG still searching)");
   return false;
